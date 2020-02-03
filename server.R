@@ -310,7 +310,7 @@ function(input, output, session) {
     })
 
   ## Render Overlap Matrix Of Genesets ##
-  output$corrPltly <- renderPlotly({
+  output$gsOverPltly <- renderPlotly({
       geneSigs <- previewSet()
       get_lower_tri<-function(mat){
         mat[upper.tri(mat, diag = F)] <- NA
@@ -355,7 +355,7 @@ function(input, output, session) {
         if(!is.null(previewSet())){
         tabsetPanel(
           tabPanel("Gene Numbers", plotlyOutput("sigsBar")),
-          tabPanel("Overlap", plotlyOutput("corrPltly")),
+          tabPanel("Overlap", plotlyOutput("gsOverPltly")),
           tabPanel("Table (Head)", tableOutput("tableHead")),
           tabPanel("Full Table", tableOutput("tableAll"))
         )
@@ -755,6 +755,34 @@ function(input, output, session) {
                    withSpinner(plotlyOutput("nesPlotly"),
                                           type = 6)
                    ),
+          tabPanel("Correlations",
+                   dropdown(
+                     tags$h3("Correlation Plot Options"),
+                     tags$hr(),
+                     pickerInput(
+                       inputId = "nesCorrSelection",
+                       label = "Select Dataset To Preview:",
+                       choices = list(
+                         TCGA = cancerTypes,
+                         Independent = c("MCP-Counter", "TIMER", "CIBERSORT")
+                       )
+                     ),
+                     radioGroupButtons(
+                       inputId = "corrTestSelection",
+                       label = "Select Correlation Test",
+                       choiceNames = c("Pearson", "Spearman", "Kendall"),
+                       choiceValues = c("pearson", "spearman", "kendall"),
+                       selected = "kendall",
+                       individual = TRUE
+                     ),
+                     style = "pill",
+                     status = "success",
+                     icon = icon("gear"),
+                     size = "lg"
+                   ),
+                   withSpinner(plotlyOutput("estCorrPltly"),
+                               type = 6)
+          ),
           tabPanel("Normalised Enrichment Scores (NES) (Head)",
                    do.call(tabsetPanel,
                            lapply(cancerTypes, function(cancer) {
@@ -833,6 +861,53 @@ function(input, output, session) {
       config(displayModeBar = F) %>%
       layout(paper_bgcolor='transparent')
     })
+  
+  ## Render Correlation Matrix
+  
+  output$estCorrPltly <- renderPlotly({
+    estimates <- isolate(activeEst())
+    mat <- t(estimates[[input$nesCorrSelection]])
+    
+    get_lower_tri<-function(mat){
+      mat[upper.tri(mat, diag = F)] <- NA
+      return(mat)
+    }
+    
+    corrMat <- cor(mat, method = input$corrTestSelection)
+    corrMat <- round(corrMat, 2)
+    corrTri <- get_lower_tri(corrMat)
+    corrMelt <- reshape2::melt(corrTri, na.rm = T)
+    colnames(corrMelt) <- c("sig1", "sig2", "correlation")
+    corrMelt$sig1 <- factor(corrMelt$sig1, levels = rev(levels(corrMelt$sig2)))
+    
+    limit <- max(abs(corrMelt$correlation)) * c(-1, 1)
+    
+    corrPlt <- ggplot(data = corrMelt,
+                      aes(x = sig1,
+                          y = sig2,
+                          fill = correlation,
+                          text = sprintf("Correlation of %s & %s\n NESs is: %s",
+                                         gsub("_"," ", sig1),
+                                         gsub("_"," ", sig2),
+                                         correlation))) +
+      geom_tile() +
+      scale_fill_distiller(type = "div", palette = "RdBu", limit = limit) +
+      theme_minimal() +
+      ggtitle(input$nesCorrSelection) +
+      theme(axis.text.x = element_text(angle = 45, vjust = 1.3, hjust = 1),
+            panel.grid.major = element_blank(),
+            panel.grid.minor = element_blank(),
+            axis.title.x = element_blank(),
+            axis.title.y = element_blank(),
+            plot.title = element_text(hjust = 0.5))
+    
+    ggplotly(corrPlt,
+             tooltip = "text") %>%
+      config(displayModeBar = F) %>%
+      layout(paper_bgcolor='transparent')
+    
+  })
+  
 
   #### Tumour Purity Benchmark ####
   
