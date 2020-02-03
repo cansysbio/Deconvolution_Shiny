@@ -29,6 +29,15 @@ radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hov
   htmltools::attachDependencies(bsTag, shinyBS:::shinyBSDep)
 }
 
+heatPrevButton <- tags$div(actionButton("heatPrevPlot",
+                                         HTML('<div class="col-sm-4"><i class="fa fa-arrow-alt-circle-left"></i></div>')))
+heatNextButton <- div(actionButton("heatNextPlot",
+                             HTML('<div class="col-sm-4"><i class="fa fa-arrow-alt-circle-right"></i></div>')))
+corrPrevButton <- tags$div(actionButton("corrPrevPlot",
+                                        HTML('<div class="col-sm-4"><i class="fa fa-arrow-alt-circle-left"></i></div>')))
+corrNextButton <- div(actionButton("corrNextPlot",
+                                   HTML('<div class="col-sm-4"><i class="fa fa-arrow-alt-circle-right"></i></div>')))
+
 function(input, output, session) {
   
   #### Load Required Data ####
@@ -724,61 +733,67 @@ function(input, output, session) {
       fluidPage(
         tabsetPanel(
           tabPanel("Heatmap",
-                   dropdown(
-                     tags$h3("Heatmap Options"),
-                     tags$hr(),
-                     pickerInput(
-                       inputId = "nesPrevSelection",
-                       label = "Select Dataset To Preview:",
-                       choices = list(
-                         TCGA = cancerTypes,
-                         Independent = c("MCP-Counter", "TIMER", "CIBERSORT")
-                       )
-                     ),
-                     checkboxGroupButtons(
-                       inputId = "nesCluster",
-                       label = "Cluster By:",
-                       choiceNames = c("Row", "Column"),
-                       choiceValues = c("row", "column"),
-                       individual = TRUE,
-                       checkIcon = list(
-                         yes = icon("ok", lib = "glyphicon"),
-                         no = icon("remove", lib = "glyphicon")
+                   fluidRow(
+                     dropdown(
+                       tags$h3("Heatmap Options"),
+                       tags$hr(),
+                       pickerInput(
+                         inputId = "nesPrevSelection",
+                         label = "Select Dataset To Preview:",
+                         choices = list(
+                           TCGA = cancerTypes,
+                           Independent = c("MCP-Counter", "TIMER", "CIBERSORT")
+                         )
                        ),
-                       selected = c("row", "column")
+                       checkboxGroupButtons(
+                         inputId = "nesCluster",
+                         label = "Cluster By:",
+                         choiceNames = c("Row", "Column"),
+                         choiceValues = c("row", "column"),
+                         individual = TRUE,
+                         checkIcon = list(
+                           yes = icon("ok", lib = "glyphicon"),
+                           no = icon("remove", lib = "glyphicon")
+                         ),
+                         selected = c("row", "column")
+                       ),
+                       style = "pill",
+                       status = "success",
+                       icon = icon("gear"),
+                       size = "lg"
+                       ),
+                     uiOutput("heatNextPrev")
                      ),
-                     style = "pill",
-                     status = "success",
-                     icon = icon("gear"),
-                     size = "lg"
-                   ),
                    withSpinner(plotlyOutput("nesPlotly"),
                                           type = 6)
                    ),
           tabPanel("Correlations",
-                   dropdown(
-                     tags$h3("Correlation Plot Options"),
-                     tags$hr(),
-                     pickerInput(
-                       inputId = "nesCorrSelection",
-                       label = "Select Dataset To Preview:",
-                       choices = list(
-                         TCGA = cancerTypes,
-                         Independent = c("MCP-Counter", "TIMER", "CIBERSORT")
-                       )
+                   fluidRow(
+                     dropdown(
+                       tags$h3("Correlation Plot Options"),
+                       tags$hr(),
+                       pickerInput(
+                         inputId = "nesCorrSelection",
+                         label = "Select Dataset To Preview:",
+                         choices = list(
+                           TCGA = cancerTypes,
+                           Independent = c("MCP-Counter", "TIMER", "CIBERSORT")
+                         )
+                       ),
+                       radioGroupButtons(
+                         inputId = "corrTestSelection",
+                         label = "Select Correlation Test",
+                         choiceNames = c("Pearson", "Spearman", "Kendall"),
+                         choiceValues = c("pearson", "spearman", "kendall"),
+                         selected = "kendall",
+                         individual = TRUE
+                       ),
+                       style = "pill",
+                       status = "success",
+                       icon = icon("gear"),
+                       size = "lg"
                      ),
-                     radioGroupButtons(
-                       inputId = "corrTestSelection",
-                       label = "Select Correlation Test",
-                       choiceNames = c("Pearson", "Spearman", "Kendall"),
-                       choiceValues = c("pearson", "spearman", "kendall"),
-                       selected = "kendall",
-                       individual = TRUE
-                     ),
-                     style = "pill",
-                     status = "success",
-                     icon = icon("gear"),
-                     size = "lg"
+                     uiOutput("corrNextPrev")
                    ),
                    withSpinner(plotlyOutput("estCorrPltly"),
                                type = 6)
@@ -908,6 +923,57 @@ function(input, output, session) {
     
   })
   
+  ## Heatmaps Next & Previous Buttons
+  
+  output$heatNextPrev <- renderUI({
+    plotList <- cancerTypes
+    nbTab <- length(plotList)
+    if (match(input$nesPrevSelection, cancerTypes) == nbTab)
+      column(1, offset = 1, heatPrevButton)
+    else if (match(input$nesPrevSelection, cancerTypes) == 1)
+      column(1, offset = 10, heatNextButton)
+    else
+      div(column(1, offset = 1, heatPrevButton), column(1, offset=8, heatNextButton))
+  })
+  
+  output$corrNextPrev <- renderUI({
+    plotList <- cancerTypes
+    nbTab <- length(plotList)
+    if (match(input$nesCorrSelection, cancerTypes) == nbTab)
+      column(1, offset = 1, corrPrevButton)
+    else if (match(input$nesCorrSelection, cancerTypes) == 1)
+      column(1, offset = 10, corrNextButton)
+    else
+      div(column(1, offset = 1, corrPrevButton), column(1, offset=8, corrNextButton))
+  })
+  
+  observeEvent(input$heatPrevPlot,
+               {
+                 plotList <- cancerTypes
+                 currentPlot <- match(input$nesPrevSelection, cancerTypes)
+                 updatePickerInput(session,"nesPrevSelection", selected = plotList[currentPlot - 1])
+               })
+  
+  observeEvent(input$heatNextPlot,
+               {
+                 plotList <- cancerTypes
+                 currentPlot <- match(input$nesPrevSelection, cancerTypes)
+                 updatePickerInput(session,"nesPrevSelection", selected = plotList[currentPlot + 1])
+               })
+  
+  observeEvent(input$corrPrevPlot,
+               {
+                 plotList <- cancerTypes
+                 currentPlot <- match(input$nesCorrSelection, cancerTypes)
+                 updatePickerInput(session,"nesCorrSelection", selected = plotList[currentPlot - 1])
+               })
+  
+  observeEvent(input$corrNextPlot,
+               {
+                 plotList <- cancerTypes
+                 currentPlot <- match(input$nesCorrSelection, cancerTypes)
+                 updatePickerInput(session,"nesCorrSelection", selected = plotList[currentPlot + 1])
+               })
 
   #### Tumour Purity Benchmark ####
   
