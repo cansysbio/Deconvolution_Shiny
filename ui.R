@@ -7,7 +7,8 @@ library(RColorBrewer)
 library(plotly)
 library(htmlwidgets)
 library(BBmisc)
-#library(GSVA)
+library(GSVA)
+library(singscore)
 library(plyr)
 library(shinythemes)
 library(rdrop2)
@@ -25,7 +26,7 @@ library(data.table)
 library(crosstalk)
 
 
-#plan(multiprocess)
+plan(multiprocess)
 
 cancerTypes = c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC",
                 "KICH", "KIRC", "KIRP","LGG", "LIHC", "LUAD", "LUSC", "MESO", "OV", "PAAD",
@@ -55,7 +56,7 @@ radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hov
 
 
 # UI for Application for Benchmarking Gene Sets
-navbarPage("TME Cell Estimation Benchmarking", collapsible = TRUE, theme = shinytheme("spacelab"),
+navbarPage("TME Cell Estimation Benchmarking", collapsible = TRUE, theme = "new.css", inverse = T,
            
   #### Home Page ####           
            tabPanel("Home", icon = icon("fas fa-home"),
@@ -104,167 +105,169 @@ navbarPage("TME Cell Estimation Benchmarking", collapsible = TRUE, theme = shiny
                       width = 12)
                     ),
   #### Benchmark New Genesets ####
-    #        navbarMenu("Benchmark New Geneset",
-    #                   tabPanel("Input Gene Signatures",
-    #                            fluidPage(
-    #                              useShinyjs(),
-    #                              sidebarLayout(
-    #                                sidebarPanel(
-    #                                  selectInput(
-    #                                    "consCanIn",
-    #                                    HTML("<h4> Use Consensus<sup>TME</sup> Gene List \n for Cancer Type: </h4>"),
-    #                                    choices = cancerList),
-    #                                  actionButton("loadCons",
-    #                                               label = HTML("Load Consensus<sup>TME</sup> Geneset")),
-    #                                  tags$hr(),
-    #                                  h4("Use New Gene Set \n "),
-    #                                  fileInput("geneFile", "Choose Gene Signatures File:",
-    #                                            accept = c(
-    #                                              "text/csv",
-    #                                              "text/comma-separated-values,text/plain",
-    #                                              ".csv",
-    #                                              ".rds"
-    #                                              )
-    #                                            ),
-    #                                  radioButtons(inputId = "fileType", "Gene Set Type",
-    #                                               choices = c("Single Set of Gene Signatures - Dataframe" = "fileSingle",
-    #                                                           "Cancer Specific Signatures List - List (.rds)" = "fileList"
-    #                                                           ),
-    #                                               selected = "fileSingle"
-    #                                               ),
-    #                                  radioTooltip(id = "fileType",
-    #                                               title =  "Upload .txt or .csv ",
-    #                                               placement = "bottom", trigger = "hover",
-    #                                               choice = "fileSingle",
-    #                                               options = NULL),
-    #                                  radioTooltip(id = "fileType",
-    #                                               title =  "Upload .rds File",
-    #                                               placement = "bottom", trigger = "hover",
-    #                                               choice = "fileList",
-    #                                               options = NULL),
-    #                                  tags$hr(),
-    #                                  uiOutput("inSettings"),
-    #                                  tags$hr()
-    #                                  ),
-    #                                mainPanel(
-    #                                  uiOutput("previews")
-    #                                  )
-    #                                )
-    #                              )
-    #                            ),
-    #                   tabPanel("Produce Cell Type Estimates",
-    #                            fluidPage(
-    #                              useShinyjs(),
-    #                              useSweetAlert(),
-    #                              div(id ="estSidebar",
-    #                                  sidebarPanel(
-    #                                    HTML("<center> <h3> Produce Estimates For Benchmarking Data Sets </h3> </center>"),
-    #                                    tags$hr(),
-    #                                    div(radioButtons("statMethod",
-    #                                                     "Choose Statistical Framework:",
-    #                                                     choices = c("ssGSEA - \n single sample Gene Set Enrichment Analysis" = "statSsgsea"),
-    #                                                     selected = "statSsgsea"
-    #                                                     ),
-    #                                        style="font-size:100%"
-    #                                        ),
-    #                                    tags$hr(),
-    #                                    uiOutput("isSelector"),
-    #                                    tags$hr(),
-    #                                    textInput(
-    #                                      "geneSetName",
-    #                                      "Enter Name For New Gene Set",
-    #                                      placeholder = "e.g: MyGeneSet"
-    #                                      ),
-    #                                    fluidRow(
-    #                                      column(4, offset = 4,
-    #                                             actionBttn("runEstimation",
-    #                                                        "Generate Estimates For Benchmarking Datasets",
-    #                                                        style = "jelly",
-    #                                                        color = "primary",
-    #                                                        block = TRUE,
-    #                                                        size = "md"
-    #                                                        )
-    #                                             )
-    #                                      ),
-    #                                    width = 12
-    #                                    )
-    #                                  ),
-    #                              div(id ="progressPanel",
-    #                                  sidebarPanel(
-    #                                    HTML("<center> <h3>  Progress  </h3> </center>"),
-    #                                    tags$hr(),
-    #                                    fluidRow(
-    #                                      column(
-    #                                        htmlOutput("progressToDo"),
-    #                                        width = 6
-    #                                        ),
-    #                                      column(
-    #                                        htmlOutput("progressFinished"),
-    #                                        width = 6
-    #                                      )
-    #                                     ),
-    #                                    tags$hr(),
-    #                                    progressBar(id = "estProgressBar",
-    #                                                value = 0,
-    #                                                display_pct = TRUE,
-    #                                                striped = T,
-    #                                                total = length(cancerTypes),
-    #                                                title = "Estimation in Progress"),
-    #                                    width = 12
-    #                                  )
-    #                              ),
-    #                              div(id ="downloadPanel",
-    #                                  sidebarPanel(
-    #                                    HTML("<center> <h3>  Download Generated Estimates  </h3> </center>"),
-    #                                    tags$br(),
-    #                                    div(id = "estRdsDownButton",
-    #                                        downloadButton(
-    #                                          outputId = "estRdsDownload",
-    #                                          label = HTML("<h4> Download Single .rds File </h4>")
-    #                                          ),
-    #                                        style =  "text-align: center"
-    #                                        ),
-    #                                    bsTooltip("estRdsDownButton",
-    #                                              "For Use By The App",
-    #                                              placement = "bottom",
-    #                                              trigger = "hover",
-    #                                              options = NULL),
-    #                                    tags$br(),
-    #                                    div(id = "estTxtDownButton",
-    #                                        downloadButton(
-    #                                          outputId = "estTxtDownload",
-    #                                          label = HTML("<h4> Download Multiple .txt Files <br> (1 Per Dataset - Zipped) </h4>")
-    #                                          ), style =  "text-align: center"
-    #                                        ),
-    #                                    tags$br(),
-    #                                    bsTooltip("estTxtDownButton",
-    #                                              "For Other Uses",
-    #                                              placement = "bottom",
-    #                                              trigger = "hover",
-    #                                              options = NULL),
-    #                                  width = 12
-    #                                  )
-    #                              ),
-    #                              div(id ="loadEstSidebar",
-    #                                sidebarPanel(
-    #                                HTML("<center> <h3> Load Previously Produced Estimates For Benchmarking Data Sets </h3> </center>"),
-    #                                tags$hr(),
-    #                                fileInput("estFile", "Upload Previously Generated .rds File:",
-    #                                          accept = ".rds",
-    #                                          width = "50%"
-    #                                          ),
-    #                                width = 12
-    #                                )
-    #                              )
-    #                            )
-    #                   ),
-    # tabPanel("Explore Estimates",
-    #          mainPanel(
-    #            uiOutput("estPreviews"),
-    #            width = 12
-    #            )
-    #          )
-    #        ),
+           navbarMenu("Benchmark New Geneset",
+                      tabPanel("Input Gene Signatures",
+                               fluidPage(
+                                 useShinyjs(),
+                                 sidebarLayout(
+                                   sidebarPanel(
+                                     selectInput(
+                                       "consCanIn",
+                                       HTML("<h4> Use Consensus<sup>TME</sup> Gene List \n for Cancer Type: </h4>"),
+                                       choices = cancerList),
+                                     actionButton("loadCons",
+                                                  label = HTML("Load Consensus<sup>TME</sup> Geneset")),
+                                     tags$hr(),
+                                     h4("Use New Gene Set \n "),
+                                     fileInput("geneFile", "Choose Gene Signatures File:",
+                                               accept = c(
+                                                 "text/csv",
+                                                 "text/comma-separated-values,text/plain",
+                                                 ".csv",
+                                                 ".rds"
+                                                 )
+                                               ),
+                                     radioButtons(inputId = "fileType", "Gene Set Type",
+                                                  choices = c("Single Set of Gene Signatures - Dataframe" = "fileSingle",
+                                                              "Cancer Specific Signatures List - List (.rds)" = "fileList"
+                                                              ),
+                                                  selected = "fileSingle"
+                                                  ),
+                                     radioTooltip(id = "fileType",
+                                                  title =  "Upload .txt or .csv ",
+                                                  placement = "bottom", trigger = "hover",
+                                                  choice = "fileSingle",
+                                                  options = NULL),
+                                     radioTooltip(id = "fileType",
+                                                  title =  "Upload .rds File",
+                                                  placement = "bottom", trigger = "hover",
+                                                  choice = "fileList",
+                                                  options = NULL),
+                                     tags$hr(),
+                                     uiOutput("inSettings"),
+                                     tags$hr()
+                                     ),
+                                   mainPanel(
+                                     uiOutput("previews")
+                                     )
+                                   )
+                                 )
+                               ),
+                      tabPanel("Produce Cell Type Estimates",
+                               fluidPage(
+                                 useShinyjs(),
+                                 useSweetAlert(),
+                                 div(id ="estSidebar",
+                                     sidebarPanel(
+                                       HTML("<center> <h3> Produce Estimates For Benchmarking Data Sets </h3> </center>"),
+                                       tags$hr(),
+                                       div(radioButtons("statMethod",
+                                                        "Choose Statistical Framework:",
+                                                        choices = c("ssGSEA - single sample Gene Set Enrichment Analysis" = "statSsgsea",
+                                                                     "singScore - alternative single sample Scoring approach" = "statSingscore"),
+                                                        selected = "statSsgsea"
+                                                        ),
+                                           style="font-size:100%"
+                                           ),
+                                       tags$hr(),
+                                       uiOutput("isSelector"),
+                                       tags$hr(),
+                                       textInput(
+                                         "geneSetName",
+                                         "Enter Name For New Gene Set",
+                                         placeholder = "e.g: MyGeneSet"
+                                         ),
+                                       fluidRow(
+                                         column(4, offset = 4,
+                                                actionBttn("runEstimation",
+                                                           "Generate Estimates For Benchmarking Datasets",
+                                                           style = "gradient",
+                                                           color = "primary",
+                                                           block = TRUE,
+                                                           size = "md"
+                                                           )
+                                                )
+                                         ),
+                                       width = 12
+                                       )
+                                     ),
+                                 div(id ="progressPanel",
+                                     sidebarPanel(
+                                       HTML("<center> <h3>  Progress  </h3> </center>"),
+                                       tags$hr(),
+                                       fluidRow(
+                                         column(
+                                           htmlOutput("progressToDo"),
+                                           width = 6
+                                           ),
+                                         column(
+                                           htmlOutput("progressFinished"),
+                                           width = 6
+                                         )
+                                        ),
+                                       tags$hr(),
+                                       progressBar(id = "estProgressBar",
+                                                   value = 0,
+                                                   display_pct = TRUE,
+                                                   striped = T,
+                                                   total = length(cancerTypes),
+                                                   title = "Estimation in Progress"),
+                                       width = 12
+                                     )
+                                 ),
+                                 div(id ="downloadPanel",
+                                     sidebarPanel(
+                                       HTML("<center> <h3>  Download Generated Estimates  </h3> </center>"),
+                                       tags$br(),
+                                       div(id = "estRdsDownButton",
+                                           downloadButton(
+                                             outputId = "estRdsDownload",
+                                             label = HTML("<h4 style='color:#F0F1F2'> Download Single .rds File </h4>"),
+                                             ),
+                                           style = "text-align: center"
+                                           ),
+                                       bsTooltip("estRdsDownButton",
+                                                 "For Use Within The App",
+                                                 placement = "bottom",
+                                                 trigger = "hover",
+                                                 options = NULL),
+                                       tags$br(),
+                                       div(id = "estTxtDownButton",
+                                           downloadButton(
+                                             outputId = "estTxtDownload",
+                                             label = HTML("<h4 style='color:#F0F1F2'> Download Multiple .txt Files <br> (1 Per Dataset - Zipped) </h4>"),
+                                             ),
+                                           style = "text-align: center"
+                                           ),
+                                       tags$br(),
+                                       bsTooltip("estTxtDownButton",
+                                                 "For Other Uses",
+                                                 placement = "bottom",
+                                                 trigger = "hover",
+                                                 options = NULL),
+                                     width = 12
+                                     )
+                                 ),
+                                 div(id ="loadEstSidebar",
+                                   sidebarPanel(
+                                   HTML("<center> <h3> Load Previously Produced Estimates For Benchmarking Data Sets </h3> </center>"),
+                                   tags$hr(),
+                                   fileInput("estFile", "Upload Previously Generated .rds File:",
+                                             accept = ".rds",
+                                             width = "50%"
+                                             ),
+                                   width = 12
+                                   )
+                                 )
+                               )
+                      ),
+    tabPanel("Explore Estimates",
+             mainPanel(
+               uiOutput("estPreviews"),
+               width = 12
+               )
+             )
+           ),
 
   #### Tumour Purity Benchmark #### 
   navbarMenu("TCGA Benchmarking",
@@ -668,4 +671,3 @@ navbarPage("TME Cell Estimation Benchmarking", collapsible = TRUE, theme = shiny
   #### Method Comparison ####
   #tabPanel("Method Comparison")
 )
-

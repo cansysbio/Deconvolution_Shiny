@@ -323,7 +323,7 @@ function(input, output, session) {
       overlapTri <- cbind(row.names(overlapTri), overlapTri)
       colnames(overlapTri)[1] <- 'sigs'
 
-      overlapMelt <- melt(overlapTri, na.rm = T)
+      overlapMelt <- reshape2::melt(overlapTri, na.rm = T)
       colnames(overlapMelt) <- c('sig1','sig2','overlap')
       overlapMelt$sig1 <- factor(overlapMelt$sig1, levels = rev(levels(overlapMelt$sig2)))
 
@@ -501,6 +501,7 @@ function(input, output, session) {
    inTyp <- inType()
    newDf  <- newSigDf()
    isCell <- input$immuneScorePicker
+   statFrame <- input$statMethod
 
    if(validGsName()){
      shinyjs::hide(id = "downloadPanel")
@@ -518,13 +519,26 @@ function(input, output, session) {
            }
            genelist <- removeBlanks(genelist)
            tmpM <- get(canc)
-           estimates <- gsva(tmpM,
-                             genelist,
-                             method='ssgsea',
-                             min.sz=0,
-                             max.sz=Inf,
-                             ssgsea.norm=T)
-           cancEst <- as.data.frame(estimates)
+           if (statFrame == "statSsgsea") {
+             estimates <- gsva(tmpM,
+                               genelist,
+                               method='ssgsea',
+                               min.sz=0,
+                               max.sz=Inf,
+                               ssgsea.norm=T)
+             cancEst <- as.data.frame(estimates)
+           } else if (statFrame == "statSingscore") {
+             rankRna <- rankGenes(tmpM)
+             genelist <- genelist[sapply(genelist, function(x){
+               length(x) > 0
+             })]
+             cancerGeneSet <- lapply(names(genelist), function(cellType){
+               GeneSet(genelist[[cellType]], setName = cellType)
+             })
+             cancerGeneCol <- GeneSetCollection(cancerGeneSet)
+             scores <- multiScore(rankData = rankRna, upSetColc = cancerGeneCol)
+             cancEst <- as.data.frame(scores$Scores)
+           }
            fire_complete(canc)
            rm(tmpM)
            gc()
