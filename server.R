@@ -755,12 +755,22 @@ function(input, output, session) {
                    withSpinner(plotlyOutput("nesPlotly"),
                                           type = 6)
                    ),
-          tabPanel("Normalised Enrichment Scores (NES) (Head)", withSpinner(tableOutput("estTableHead"),
-                                               type = 6)
+          tabPanel("Normalised Enrichment Scores (NES) (Head)",
+                   do.call(tabsetPanel,
+                           lapply(cancerTypes, function(cancer) {
+                             tabPanel(title = cancer, withSpinner(tableOutput(paste0("estTableHead", cancer)),
+                                                                  type = 6))
+                             })
+                           )
                    ),
-          tabPanel("NES - Full Table", withSpinner(tableOutput("estTableAll"),
-                                             type = 6)
+          tabPanel("NES - Full Table",
+                   do.call(tabsetPanel,
+                           lapply(cancerTypes, function(cancer) {
+                             tabPanel(title = cancer, withSpinner(tableOutput(paste0("estTableAll", cancer)),
+                                                                  type = 6))
+                           })
                    )
+          )
         )
       )
     } else {
@@ -773,23 +783,25 @@ function(input, output, session) {
 
 
   ## Render Table Output
-  output$estTableHead <- renderTable({
+  lapply(cancerTypes, function(cancer) {
+  output[[paste0("estTableHead", cancer)]] <- renderTable({
     estimates <- activeEst()
     if(is.null(input$estPrevDataset)){
-      return(estimates[[1]][1:nrow(estimates[[1]]),1:5])
+      return(estimates[[cancer]][1:nrow(estimates[[1]]),1:5])
     } else {
       return(estimates[[input$estPrevDataset]][1:nrow(estimates[[1]]),1:5])
     }
-  },rownames = TRUE)
+  },rownames = TRUE)})
 
-  output$estTableAll <- renderTable({
-    estimates <- activeEst()
-    if(is.null(input$estPrevDataset)){
-      return(estimates[[1]])
-    } else {
-      return(estimates[[input$estPrevDataset]])
-    }
-  },rownames = TRUE)
+  lapply(cancerTypes, function(cancer) {
+    output[[paste0("estTableAll", cancer)]] <- renderTable({
+      estimates <- activeEst()
+      if(is.null(input$estPrevDataset)){
+        return(estimates[[cancer]])
+      } else {
+        return(estimates[[input$estPrevDataset]])
+      }
+    },rownames = TRUE)})
 
   ## Render Interactive Heatmap With Options
 
