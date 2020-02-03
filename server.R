@@ -1,13 +1,35 @@
-source('./useful_functions.R')
-# cancerTypes <- c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC",
-#                         "KICH", "KIRC", "KIRP","LGG", "LIHC", "LUAD", "LUSC", "MESO", "OV", "PAAD",
-#                         "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD", "TGCT", "THCA", "THYM",
-#                         "UCEC", "UCS", "UVM")
-cancerTypes <- c("UCEC", "UCS", "UVM")
+#### Define Extra Variables ####
 
+source('./useful_functions.R')
+
+## TCGA Cancer Types
+cancerTypes <- c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC",
+                        "KICH", "KIRC", "KIRP","LGG", "LIHC", "LUAD", "LUSC", "MESO", "OV", "PAAD",
+                        "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD", "TGCT", "THCA", "THYM",
+                        "UCEC", "UCS", "UVM")
+#cancerTypes <- c("UCEC", "UCS", "UVM")
 cancerList <- as.list(cancerTypes)
 
+## Consensus Gene Sets
+
+consensusCancerTypes <- c(cancerList, "Unfiltered")
+
+## Independent Benchmarking Datasets
+
+indDataSets  <- c("CIBERSORT", "HGSOC", "MCP_Counter", "TIMER_BLCA", "xCell_SDY311", "xCell_SDY420")
+
+indDsList <- as.list(indDataSets)
+names(indDsList) <- c("CIBERSORT", "HGSOC", " MCP-Counter", "TIMER", "xCell-SDY311", "xCell-SDY420")
+
+indDsCancerTypes <- c("Unfiltered", "Unfiltered", "Unfiltered",
+                      "BLCA", "COAD", "OV")
+names(indDsCancerTypes) <- indDataSets
+
+allDataSets <- c(cancerTypes, indDataSets)
+
 estProgressBox <- 0
+
+#### Extra/ Altered JS Items ####
 
 radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hover", options = NULL){
   
@@ -38,6 +60,8 @@ corrPrevButton <- tags$div(actionButton("corrPrevPlot",
 corrNextButton <- div(actionButton("corrNextPlot",
                                    HTML('<div class="col-sm-4"><i class="fa fa-arrow-alt-circle-right"></i></div>')))
 
+
+#### Server Function ####
 function(input, output, session) {
   
   #### Load Required Data ####
@@ -116,7 +140,7 @@ function(input, output, session) {
         selectInput(
           "listPrev",
           HTML("<h4> Select Cancer Type to Preview: </h4>"),
-          choices = cancerList)
+          choices = consensusCancerTypes)
         })
     }
   })
@@ -143,7 +167,7 @@ function(input, output, session) {
     if(!is.null(input$listPrev)){
       return(input$listPrev)
     } else {
-      'ACC'
+      "ACC"
     }
   })
 
@@ -188,9 +212,9 @@ function(input, output, session) {
           )
           return(NULL)
         }
-        if(FALSE %in% (names(cancerGeneList) == cancerList)){
-          unused <- names(cancerGeneList[!names(cancerGeneList) == cancerList])
-          missingSets <- as.character(cancerList)[!names(cancerGeneList) == cancerList]
+        if(FALSE %in% (names(cancerGeneList) == consensusCancerTypes)){
+          unused <- names(cancerGeneList[!names(cancerGeneList) == consensusCancerTypes])
+          missingSets <- as.character(consensusCancerTypes)[!names(cancerGeneList) == consensusCancerTypes]
           if(unused > 0 | !is.na(unused)){
             cancerGeneList[[unused]] <- NULL
             sendSweetAlert(
@@ -199,12 +223,12 @@ function(input, output, session) {
               title = "Gene List Error",
               text = tags$span(
                 tags$body(
-                        "The Following Gene Sets Could Not Be Matched To One Of The Available TCGA Cancer Types So Will Removed:",
-                        tags$br(),
-                        tags$b(paste0('"', unused, '"')),
-                        tags$br(),
-                        "(See Help Section For Guidance)"
-                        )
+                  "The Following Gene Sets Could Not Be Matched To One Of The Available TCGA Cancer Types So Will Removed:",
+                  tags$br(),
+                  tags$b(paste0('"', unused, '"')),
+                  tags$br(),
+                  "(See Help Section For Guidance)"
+                  )
                 ),
               type = "warning"
             )
@@ -213,8 +237,15 @@ function(input, output, session) {
             sendSweetAlert(
               session = session,
               title = "Gene List Error",
-              text = sprintf("Gene List Names Need to Match Cancer Types, /n %s /n Could Not Be Found In Names of Uploaded Gene Sets Lists (See Help Section For Guidance)",
-                             missingSets),
+              text = tags$span(
+                tags$body(
+                  "Gene List Names Need to Match Cancer Types,",
+                  tags$br(),
+                  tags$b(missingSets),
+                  tags$br(),
+                  "Could Not Be Found In Names of Uploaded Gene Sets Lists (See Help Section For Guidance)"
+                  )
+                ),
               type = "warning"
             )
           }
@@ -233,7 +264,7 @@ function(input, output, session) {
 
   previewSet <- reactive({
     if(currentSig$reactInd == "sigConsensus"){
-      consensusCancer <- readRDS('./data/ConsensusTME_GeneSets.rds')
+      consensusCancer <- ConsensusTME::consensusGeneSets
       genelist <- ldply(consensusCancer[[consCanc()]], rbind)
       geneset <- t(genelist)
       colnames(geneset) <- geneset[1, ]
@@ -517,7 +548,7 @@ function(input, output, session) {
      estProgressBox <- shiny::Progress$new(session = session)
      estProgressBox$set(message = "Generating Estimates -", detail = "This May Take Several Minutes Please Explore Current Benchmarking While You Wait")
 
-     futs <- promise_all(.list = lapply(cancerTypes, function(canc){
+     futs <- promise_all(.list = lapply(allDataSets, function(ds){
        future({
          lazyLoad("./data/All_RNA")
          if(inTyp == "fileSingle"){
@@ -527,7 +558,7 @@ function(input, output, session) {
              genelist[['Immune_Score']] <- unique(unlist(genelist[isCell]))
            }
            genelist <- removeBlanks(genelist)
-           tmpM <- get(canc)
+           tmpM <- get(ds)
            if (statFrame == "statSsgsea") {
              estimates <- gsva(tmpM,
                                genelist,
@@ -535,27 +566,27 @@ function(input, output, session) {
                                min.sz=0,
                                max.sz=Inf,
                                ssgsea.norm=T)
-             cancEst <- as.data.frame(estimates)
+             dsEst <- as.data.frame(estimates)
            } else if (statFrame == "statSingscore") {
              rankRna <- rankGenes(tmpM)
              genelist <- genelist[sapply(genelist, function(x){
                length(x) > 0
              })]
-             cancerGeneSet <- lapply(names(genelist), function(cellType){
+             dsGeneSet <- lapply(names(genelist), function(cellType){
                GeneSet(genelist[[cellType]], setName = cellType)
              })
-             cancerGeneCol <- GeneSetCollection(cancerGeneSet)
-             scores <- multiScore(rankData = rankRna, upSetColc = cancerGeneCol)
-             cancEst <- as.data.frame(scores$Scores)
+             dsGeneCol <- GeneSetCollection(dsGeneSet)
+             scores <- multiScore(rankData = rankRna, upSetColc = dsGeneCol)
+             dsEst <- as.data.frame(scores$Scores)
            }
-           fire_complete(canc)
+           fire_complete(ds)
            rm(tmpM)
            gc()
-           return(cancEst)
+           return(dsEst)
          }
        }) %...>% {
-           estProgressBox$inc(1/(length(cancerTypes)), message = "Generating Estimates:  ", detail = 'This may take several minutes - See Estimation Panel For More Detail')
-           allEst[[canc]] <<- .
+           estProgressBox$inc(1/(length(allDataSets)), message = "Generating Estimates:  ", detail = 'This may take several minutes - See Estimation Panel For More Detail')
+           allEst[[ds]] <<- .
          }
      }
      )
@@ -608,13 +639,13 @@ function(input, output, session) {
 
      tmpContents <- scan(status_file, what = "character",sep="\n")
 
-     datasetsProgress$toDo <- cancerTypes[!cancerTypes %in% tmpContents]
+     datasetsProgress$toDo <- allDataSets[!allDataSets %in% tmpContents]
 
-     datasetsProgress$finished <- cancerTypes[cancerTypes %in% tmpContents]
+     datasetsProgress$finished <- allDataSets[allDataSets %in% tmpContents]
 
-     percentComplete <- length(datasetsProgress$finished)/length(cancerTypes)
+     percentComplete <- length(datasetsProgress$finished)/length(allDataSets)
 
-     updateProgressBar(session = session, id = "estProgressBar", value = length(datasetsProgress$finished), total = length(cancerTypes))
+     updateProgressBar(session = session, id = "estProgressBar", value = length(datasetsProgress$finished), total = length(allDataSets))
 
    }
  })
@@ -742,7 +773,7 @@ function(input, output, session) {
                          label = "Select Dataset To Preview:",
                          choices = list(
                            TCGA = cancerTypes,
-                           Independent = c("MCP-Counter", "TIMER", "CIBERSORT")
+                           Independent = indDsList
                          )
                        ),
                        checkboxGroupButtons(
@@ -777,9 +808,9 @@ function(input, output, session) {
                          label = "Select Dataset To Preview:",
                          choices = list(
                            TCGA = cancerTypes,
-                           Independent = c("MCP-Counter", "TIMER", "CIBERSORT")
+                           Independent = indDsList
                          )
-                       ),
+                         ),
                        radioGroupButtons(
                          inputId = "corrTestSelection",
                          label = "Select Correlation Test",
