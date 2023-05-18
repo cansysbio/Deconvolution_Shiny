@@ -55,7 +55,7 @@ radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hov
 
 
 # UI for Application for Benchmarking Gene Sets
-navbarPage("TME Cell Estimation Benchmarking", collapsible = TRUE, theme = shinytheme("spacelab"),
+navbarPage("TME Cell Estimation Benchmarking", collapsible = TRUE, theme = "new.css", inverse = T,
            
   #### Home Page ####           
            tabPanel("Home", icon = icon("fas fa-home"),
