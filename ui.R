@@ -26,7 +26,7 @@ library(data.table)
 library(crosstalk)
 
 
-plan(multiprocess)
+plan(multisession)
 
 cancerTypes = c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC",
                 "KICH", "KIRC", "KIRP","LGG", "LIHC", "LUAD", "LUSC", "MESO", "OV", "PAAD",

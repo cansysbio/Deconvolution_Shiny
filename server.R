@@ -3,13 +3,13 @@
 source('./useful_functions.R')
 
 ## TCGA Cancer Types
-cancerTypes <- c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC",
-                        "KICH", "KIRC", "KIRP","LGG", "LIHC", "LUAD", "LUSC", "MESO", "OV", "PAAD",
-                        "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD", "TGCT", "THCA", "THYM",
-                        "UCEC", "UCS", "UVM")
-#cancerTypes <- c("UCEC", "UCS", "UVM")
+#cancerTypes <- c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC",
+#                       "KICH", "KIRC", "KIRP","LGG", "LIHC", "LUAD", "LUSC", "MESO", "OV", "PAAD",
+#                       "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD", "TGCT", "THCA", "THYM",
+#                       "UCEC", "UCS", "UVM")
+cancerTypes <- c("UCEC", "UCS", "UVM")
 cancerList <- as.list(cancerTypes)
-
+names(cancerList) <- cancerTypes
 ## Consensus Gene Sets
 
 consensusCancerTypes <- c(cancerList, "Unfiltered")
@@ -26,6 +26,7 @@ indDsCancerTypes <- c("Unfiltered", "Unfiltered", "Unfiltered",
 names(indDsCancerTypes) <- indDataSets
 
 allDataSets <- c(cancerTypes, indDataSets)
+allDsCancerTypes <- c(cancerList, indDsCancerTypes)
 
 estProgressBox <- 0
 
@@ -540,6 +541,7 @@ function(input, output, session) {
    gsBool <- validGsName()
    inTyp <- inType()
    newDf  <- newSigDf()
+   newList <- newSigList()
    isCell <- input$immuneScorePicker
    statFrame <- input$statMethod
 
@@ -558,11 +560,11 @@ function(input, output, session) {
              genelist[['Immune_Score']] <- unique(unlist(genelist[isCell]))
            }
            genelist <- removeBlanks(genelist)
-           tmpM <- get(ds)
+           tmpM <- as.matrix(get(ds))
            if (statFrame == "statSsgsea") {
-             estimates <- gsva(tmpM,
-                               genelist,
-                               method='ssgsea',
+             estimates <- gsva(expr = tmpM,
+                               gset.idx.list = genelist,
+                               method = "ssgsea",
                                min.sz=0,
                                max.sz=Inf,
                                ssgsea.norm=T)
@@ -583,7 +585,35 @@ function(input, output, session) {
            rm(tmpM)
            gc()
            return(dsEst)
-         }
+         } else if (inTyp == "fileList"){
+           dsCancerType <- allDsCancerTypes[[ds]]
+           geneset <- newList[[dsCancerType]]
+           tmpM <- as.matrix(get(ds))
+           if (statFrame == "statSsgsea") {
+             estimates <- gsva(tmpM,
+                               geneset,
+                               method='ssgsea',
+                               min.sz=0,
+                               max.sz=Inf,
+                               ssgsea.norm=T)
+             dsEst <- as.data.frame(estimates)
+           } else if (statFrame == "statSingscore") {
+             rankRna <- rankGenes(tmpM)
+             genelist <- geneset[sapply(geneset, function(x){
+               length(x) > 0
+             })]
+             dsGeneSet <- lapply(names(genelist), function(cellType){
+               GeneSet(genelist[[cellType]], setName = cellType)
+             })
+             dsGeneCol <- GeneSetCollection(dsGeneSet)
+             scores <- multiScore(rankData = rankRna, upSetColc = dsGeneCol)
+             dsEst <- as.data.frame(scores$Scores)
+           }
+           fire_complete(ds)
+           rm(tmpM)
+           gc()
+           return(dsEst)
+         } 
        }) %...>% {
            estProgressBox$inc(1/(length(allDataSets)), message = "Generating Estimates:  ", detail = 'This may take several minutes - See Estimation Panel For More Detail')
            allEst[[ds]] <<- .
