@@ -1,37 +1,6 @@
 source('./useful_functions.R')
-# cancerTypes <- c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC",
-#                         "KICH", "KIRC", "KIRP","LGG", "LIHC", "LUAD", "LUSC", "MESO", "OV", "PAAD",
-#                         "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD", "TGCT", "THCA", "THYM",
-#                         "UCEC", "UCS", "UVM")
-cancerTypes <- c("UCEC", "UCS", "UVM")
-
-cancerList <- as.list(cancerTypes)
-
-estProgressBox <- 0
-
-radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hover", options = NULL){
-  
-  options = shinyBS:::buildTooltipOrPopoverOptionsList(title, placement, trigger, options)
-  options = paste0("{'", paste(names(options), options, sep = "': '", collapse = "', '"), "'}")
-  bsTag <- shiny::tags$script(shiny::HTML(paste0("
-                                                 $(document).ready(function() {
-                                                 setTimeout(function() {
-                                                 $('input', $('#", id, "')).each(function(){
-                                                 if(this.getAttribute('value') == '", choice, "') {
-                                                 opts = $.extend(", options, ", {html: true});
-                                                 $(this.parentElement).tooltip('destroy');
-                                                 $(this.parentElement).tooltip(opts);
-                                                 }
-                                                 })
-                                                 }, 500)
-                                                 });
-                                                 ")))
-  htmltools::attachDependencies(bsTag, shinyBS:::shinyBSDep)
-}
 
 function(input, output, session) {
-  
-
   #### Tumour Purity Benchmark ####
   
   load("./data/Tumour_Purity_Corrs.RData")
@@ -1060,7 +1029,7 @@ function(input, output, session) {
                size = 0.25,
                width = 0.75) + 
       facet_grid(~ Cell_Type,
-                 scales = "free_x",
+                 scales = "free",
                  drop = TRUE) +
       scale_x_discrete(labels = hgsocCorrs[, setNames(as.character(Method), ord)]) + 
       theme(axis.text.x = element_text(angle = 45, hjust=1, vjust=.5),
@@ -1139,8 +1108,147 @@ function(input, output, session) {
     
   })
   
+  #### Current Approaches Table ####
+  currDf <- read.csv("./data/Deconvolution_Methods.csv", fileEncoding = "UTF-8", check.names = F, stringsAsFactors = T)
   
+  currDf$`Publication Link` <- as.character(currDf$`Publication Link`)
+  currDf$`Link to Tool` <- as.character(currDf$`Link to Tool`)
   
-  #### In Progress ####
-
+  currDf$`Publication Link` <- sprintf('<a href="%s" target="_blank"><i class="fa fa-external-link" aria-hidden="true"></i></a>', currDf$`Publication Link`)
+  currDf$`Link to Tool` <- sprintf('<a href="%s" target="_blank"><i class="fa fa-external-link" aria-hidden="true"></i></a>', currDf$`Link to Tool`)
+  
+  output$currAppTab <- renderDT({
+    datatable(
+      currDf,
+      escape = FALSE,  # interpret the content in the column as HTML
+      selection = "none",
+      filter = 'top',
+      rownames = FALSE,
+      options = list(
+        autoWidth = TRUE,
+        pageLength = 10,
+        fixedHeader = TRUE, 
+        scrollY = '1000px',
+        scrollCollapse = TRUE,
+        paging = FALSE,
+        columnDefs = list(list(searchable = FALSE, targets = c(6, 7)))
+      )
+    )
+  })
+  
+  #### Benchmarking Datasets Tables ####
+  
+  benchResDf <- read.csv("./data/Benchmarking_Resources_Data.csv", fileEncoding = "UTF-8", check.names = F, stringsAsFactors = T)
+  
+  benchResDf$`Data Link` <- mapply(function(datLink, extraInf){
+    datLink <- as.character(datLink)
+    extraInf <- as.character(extraInf)
+    
+    if (extraInf == "Yes") {
+      extraInf <- ""
+    } else {
+      extraInf <- paste0(" - ", extraInf)
+    }
+    
+    if (datLink == "N/A") {
+      return(sprintf('<i class="fa fa-exclamation-triangle" aria-hidden="true" title="No link available"></i> %s', extraInf))
+    } else {
+      if (grepl(";", datLink)) {
+        # Split multiple links
+        links <- strsplit(datLink, ";")[[1]]
+        # Generate HTML for each link
+        linkStrings <- sapply(links, function(link) {
+          sprintf('<a href="%s" target="_blank" title="%s"><i class="fa fa-external-link" aria-hidden="true"></i></a>', link, link)
+        })
+        # Combine back into a single string
+        linkCombined = paste(linkStrings, collapse = " ")
+        return(paste0(linkCombined, extraInf))
+      } else {
+        linkSingle = sprintf('<a href="%s" target="_blank" title="%s"><i class="fa fa-external-link" aria-hidden="true"></i></a>', datLink, datLink)
+        return(paste0(linkSingle, extraInf))
+      }
+    }
+  }, benchResDf$`Data Link`, benchResDf$`Available Publicly`, SIMPLIFY = FALSE, USE.NAMES = FALSE)
+  
+  benchResDf$`Available Publicly` <- NULL
+  
+  benchResDf$`Publication Link` <- mapply(function(pubLink, pubTitle){
+    pubLink <- as.character(pubLink)
+    pubTitle <- as.character(pubTitle)
+    
+    if (pubLink == "N/A") {
+      pubTitle <- paste0(" - ", pubTitle)
+      return(sprintf('<i class="fa fa-exclamation-triangle" aria-hidden="true" title="No link available"></i> %s', pubTitle))
+    } else {
+      if (grepl(";", pubLink)) {
+        # Split multiple links
+        links <- strsplit(pubLink, ";")[[1]]
+        # Generate HTML for each link
+        linkStrings <- sapply(links, function(link) {
+          sprintf('<a href="%s" target="_blank" title="%s"><i class="fa fa-external-link" aria-hidden="true"></i></a>', link, pubTitle)
+        })
+        # Combine back into a single string
+        linkCombined = paste(linkStrings, collapse = " ")
+        return(linkCombined)
+      } else {
+        linkSingle = sprintf('<a href="%s" target="_blank" title="%s"><i class="fa fa-external-link" aria-hidden="true"></i></a>', pubLink, pubTitle)
+        return(linkSingle)
+      }
+    }
+  }, benchResDf$`Publication Link`, benchResDf$`Publication`, SIMPLIFY = FALSE, USE.NAMES = FALSE)
+  
+  benchResDf$`Publication` <- NULL
+  
+  output$benchDsTab <- renderDT({
+    datatable(
+      benchResDf,
+      escape = FALSE, 
+      selection = "none",
+      filter = 'top',
+      rownames = FALSE,
+      options = list(
+        autoWidth = TRUE,
+        pageLength = 10,
+        fixedHeader = TRUE, 
+        scrollY = '1000px',
+        scrollX = FALSE,
+        scrollCollapse = TRUE,
+        paging = FALSE,
+        columnDefs = list(list(searchable = FALSE, targets = c(8, 9)))
+      )
+    )
+  })
+  
+  #### Review Article Tables ####
+  
+  revArtDf <- read.csv("./data/Review_Articles.csv", fileEncoding = "UTF-8", check.names = F, stringsAsFactors = T)
+  
+  revArtDf$`Publication Link` <- mapply(function(pubLink, pubTitle){
+    pubTitle <- as.character(pubTitle)
+    pubLink <- as.character(pubLink)
+    
+    return(sprintf('<a href="%s" target="_blank" title="%s"><i class="fa fa-external-link" aria-hidden="true"></i></a>', pubLink, pubTitle))
+    
+  }, revArtDf$`Publication Link`, revArtDf$Title, SIMPLIFY = FALSE, USE.NAMES = FALSE)
+  
+  output$reviewTab <- renderDT({
+    datatable(
+      revArtDf,
+      escape = FALSE,
+      selection = "none",
+      filter = 'top',
+      rownames = FALSE,
+      options = list(
+        autoWidth = FALSE,
+        pageLength = 10,
+        fixedHeader = TRUE, 
+        scrollY = '1000px',
+        scrollX = FALSE,
+        scrollCollapse = TRUE,
+        paging = FALSE,
+        columnDefs = list(list(searchable = FALSE, targets = 3))
+      )
+    )
+  })
+  
 }
