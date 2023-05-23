@@ -8,6 +8,7 @@ library(heatmaply)
 library(RColorBrewer)
 library(ggbeeswarm)
 library(data.table)
+library(markdown)
 
 # UI for Application for Benchmarking Gene Sets
 navbarPage(HTML("Consensus<sup>TME</sup>"),
