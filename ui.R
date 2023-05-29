@@ -18,7 +18,7 @@ library(formattable)
 library(fontawesome)
 
 source('./useful_functions.R')
-ui <- navbarPage(HTML("Consensus<sup>TME</sup>"),
+navbarPage(HTML("Consensus<sup>TME</sup>"),
            collapsible = TRUE,
            theme = bs_theme(version = 5,
                             fg = "rgb(14, 54, 107)",
@@ -95,7 +95,7 @@ ui <- navbarPage(HTML("Consensus<sup>TME</sup>"),
                                                "TCGA_OV_Example.csv", "' download>see example TCGA Ovarian file</a></font>")),
                                    tags$br(),
                                    tags$br(),
-                                   HTML("<font color=\"#101011\"><b>N.B</b> Uploads limited to 200MB to prevent memory issues, for larger files please use R package </font>"),
+                                   HTML("<font color=\"#101011\"><b>N.B</b> App may crash due to memory restrictions, for larger files please use R package </font>"),
                                    tags$br(),
                                    tags$br(),
                                    uiOutput('rnaFile'),

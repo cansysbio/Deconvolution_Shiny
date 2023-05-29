@@ -1,6 +1,9 @@
 source('./useful_functions.R')
 
-server <- function(input, output, session) {
+function(input, output, session) {
+  session$onSessionEnded(function() {
+    stopApp()
+  })
   #### Run ConsensusTME In App ####
   
   output$rnaFile <- renderUI({fileInput(inputId = "rnaFile",
@@ -12,7 +15,7 @@ server <- function(input, output, session) {
   )
   })
   
-  # Set limit of upload file size to 200MB
+  # Set limit of upload file size to 400MB
   options(shiny.maxRequestSize=400*1024^2) 
   
   # Define reactive expressions
@@ -162,6 +165,8 @@ server <- function(input, output, session) {
       color = "#29a0f0",
       text = HTML(sprintf("Running Consensus%s", tags$sup("TME")))
     )
+    
+    ## TODO: Update GSVA to run in chunks to reduce memory load (we'll need to perform barbie et al. optimisation manually after)
     consOut <- consensusTMEAnalysis(rnaData(), cancerType = input$CancSelect)
     rnaData(NULL)
     consMat(consOut)
