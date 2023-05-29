@@ -1,13 +1,293 @@
 source('./useful_functions.R')
 
-function(input, output, session) {
+server <- function(input, output, session) {
+  #### Run ConsensusTME In App ####
+  
+  output$rnaFile <- renderUI({fileInput(inputId = "rnaFile",
+                                        "Choose bulk RNA-seq file (.txt or .csv):",
+                                        accept = c(
+                                          "text/plain",
+                                          "text/csv"
+                                        )
+  )
+  })
+  
+  # Set limit of upload file size to 200MB
+  options(shiny.maxRequestSize=400*1024^2) 
+  
+  # Define reactive expressions
+  rnaData <- reactiveVal(NULL)
+  rnaCheckPass <- reactiveVal(FALSE)
+  consMat <- reactiveVal(NULL)
+  
+  observeEvent(input$rnaFile, {
+    
+    # Stop if no file is selected
+    inFile <- input$rnaFile
+    if (is.null(inFile)) {
+      return(NULL)
+    }
+    
+    # Load data
+    tryCatch({
+      geneNames <- fread(inFile$datapath, header = T, select = 1)
+      
+      rnaMat <- as.matrix(fread(inFile$datapath, header = T, drop = 1))
+      row.names(rnaMat) <- as.character(unlist(geneNames[,1]))
+      rm(geneNames)
+      gc()
+      
+      # Additional check to ensure the data is numerical
+      if (!is.numeric(rnaMat)) {
+        stop("Data should be a numeric matrix")
+      }
+      # Check that the columns and rows are properly formatted
+      if (!all(sapply(rnaMat, is.numeric))) {
+        stop("All columns (samples) should only contain numeric values")
+      }
+      
+      # Check for HUGO symbols by initially comparing against ConsensusTME gene sets
+      allConsGenes <- unique(unlist(consensusGeneSets$Unfiltered))
+      if (!any(row.names(rnaMat) %in% allConsGenes)) {
+        stop("No genes from RNA rownames present in ConsensusTME gene sets\n Please ensure HUGO gene symbols are being used")
+      }
+      # Assign data to the reactive variable
+      rnaData(rnaMat)
+      rnaCheckPass(TRUE)
+      rm(rnaMat)
+      gc(full = T, verbose = T)
+    }, error = function(e) {
+      # Send sweet alert with error message
+      sendSweetAlert(
+        session = session,
+        title = "Error in gene expression upload",
+        text = e$message,
+        type = "error"
+      )
+      # Clear the reactive variable
+      rnaData(NULL)
+      rnaCheckPass(FALSE)
+    })
+    
+    # Check if less than 50% of necessary genes are present
+    if (rnaCheckPass()) {
+      date <- Sys.Date()
+      formattedDate <- format(date, "%d%b%y")
+      
+      fileNameExt <- inFile$name
+      fileNameNoExt <- sub("\\..*$", "", fileNameExt)
+      # Initiate download handler
+      output$downConsBttn <- downloadHandler(
+        filename = function() {
+          paste0("ConsensusTME_", formattedDate, "_", fileNameNoExt, ".csv")
+        },
+        content = function(con) {
+          write.csv(consMat(), con)
+        }
+      )
+      
+      allConsGenes <- unique(unlist(consensusGeneSets$Unfiltered))
+      genesPresent <- sum(allConsGenes %in% row.names(rnaData()))
+      if (genesPresent < length(allConsGenes) * 0.5) {
+        percPresent <- (genesPresent/length(allConsGenes)) * 100
+        # Send sweet alert with warning
+        confirmSweetAlert(
+          session = session,
+          inputId = "confirmLowGenes",
+          title = "Warning",
+          text = HTML(sprintf("Only %.1f%% of Consensus%s genes are present in the uploaded dataset. This may effect performance", percPresent, tags$sup("TME"))),
+          html = T,
+          type = "warning",
+          btn_labels = c(HTML("Cancel <span style='font-size: 15px;'>(Upload new file)</span>"), "Proceed"),
+          btn_colors = c("#ad423d", "#138f36"),
+          cancelOnDismiss = TRUE,
+          closeOnClickOutside = FALSE
+        )
+      } 
+    }
+  })
+  
+  # Once progression changes update
+  observeEvent(input$confirmLowGenes, {
+    if (is.null(input$confirmLowGenes)) {
+      return(NULL)
+    } else if (isFALSE(input$confirmLowGenes)) {
+      rnaData(NULL)
+      rnaCheckPass(FALSE)
+      output$rnaFile <- renderUI({fileInput(inputId = "rnaFile",
+                                            "Choose bulk RNA-seq file (.txt or .csv):",
+                                            accept = c(
+                                              "text/plain",
+                                              "text/csv"
+                                            )
+      )
+      })
+    } else {
+      return(NULL)
+    }
+  })
+  
+  # Once checks are complete render panel for running ConsensusTME
+  
+  output$consButtonPan <- renderUI({
+    if(isTruthy(rnaCheckPass())){
+      fluidRow(
+        column(2,
+               offset = 5,
+               actionBttn(
+                 inputId = "runConsBttn",
+                 label = HTML(sprintf("Run Consensus%s", tags$sup("TME"))),
+                 style = "unite",
+                 color = "primary"
+               )
+        )
+      )
+      
+    }
+  })
+  
+  observeEvent(input$runConsBttn, {
+    ## Check for cancer selection
+    if(is.null(input$CancSelect)) {
+      sendSweetAlert(
+        session = session,
+        title = "Cancer Type",
+        text = "Cancer type not selected, for non-specific gene sets select Unfiltered",
+        type = "error"
+      )
+      return(NULL)
+    }
+    show_modal_spinner(
+      spin = "fingerprint",
+      color = "#29a0f0",
+      text = HTML(sprintf("Running Consensus%s", tags$sup("TME")))
+    )
+    consOut <- consensusTMEAnalysis(rnaData(), cancerType = input$CancSelect)
+    rnaData(NULL)
+    consMat(consOut)
+    remove_modal_spinner()
+    sendSweetAlert(
+      session = session,
+      title ="Cell Type Estimates Generated!",
+      type = "success"
+    )
+    if(isTruthy(rnaCheckPass())){
+      output$consButtonPan <- renderUI({
+        fluidRow(
+          column(2,
+                 offset = 3,
+                 actionBttn(
+                   inputId = "runConsBttn",
+                   label = HTML(sprintf("Run Consensus%s", tags$sup("TME"))),
+                   style = "unite",
+                   color = "primary"
+                 )
+          ),
+          column(3,
+                 offset = 1,
+                 shinyWidgets::downloadBttn(
+                   outputId = "downConsBttn",
+                   label = HTML(sprintf("Download Consensus%s Results", tags$sup("TME"))),
+                   style = "unite",
+                   color = "success"
+                 )
+          )
+        )
+      })
+    }
+  })
+  
+  observeEvent(consMat(), {
+    if(!is.null(consMat())) {
+      
+      output$consHeat <- renderPlotly({
+        consPlotMat <- consMat()
+        
+        ## Subset to 3dp for plotting only
+        consPlotMat <- round(consPlotMat, 3)
+        
+        ## Move immune score to separate row colour
+        immRow <- as.data.frame(consPlotMat["Immune_Score", ])
+        colnames(immRow) <- "Immune Score"
+        
+        consPlotMat <- consPlotMat[row.names(consPlotMat) != "Immune_Score", ]
+        row.names(consPlotMat) <- gsub("_", " ", row.names(consPlotMat))
+        
+        immScorePal <- wes_palette("Zissou1", nrow(immRow), type = "continuous")
+        names(immScorePal) <- factor(sort(immRow$`Immune Score`))
+        
+        heatmaply(consPlotMat,
+                  scale_fill_gradient_fun = ggplot2::scale_fill_gradient2(
+                    low = "#762a83",
+                    mid = "white",
+                    high = "#1b7837",
+                    midpoint = 0, 
+                    limits = c(min(consPlotMat), max(consPlotMat))
+                  ),
+                  method = "plotly",
+                  dendrogram = "both",
+                  grid_gap = 0.5,
+                  branches_lwd = 0.3,
+                  subplot_heights = c(0.15, 0.05, 0.8),
+                  midpoint = 0,
+                  col_side_colors = immRow,
+                  col_side_palette = immScorePal,
+                  key.title = "Consensus<sup>TME</sup> NES",
+                  dend_hoverinfo = FALSE,
+                  ylab = "Cell Types",
+                  xlab = "Bulk Samples \n <sup> (hover for details) </sup>",
+                  showticklabels = c(F,T),
+                  label_names = c("Immune Cell", "Sample ID", "NES"),
+                  heatmap_layers = theme(axis.line = element_blank())) %>%
+          layout(height=700) %>%
+          config(displayModeBar = T) %>%
+          layout(paper_bgcolor='transparent') %>%
+          layout(plot_bgcolor='transparent')
+      })
+      
+      
+      output$consTab <- renderFormattable({
+        consTabMat <- as.data.frame(t(consMat()))
+        consTabMat <- round(consTabMat, 2)
+        colnames(consTabMat) <- gsub("_", " ", colnames(consTabMat))
+        formattable(consTabMat, list(area(col = colnames(consTabMat)) ~ normalize_bar("#fcac6f")))
+        
+      })
+      output$exploreRes <- renderUI({
+        wellPanel(
+          tags$style(type="text", "#string {text-align:center}"),
+          HTML("<h4> 2. Explore cell type estimates  </h4>"),
+          tags$hr(),
+          tags$br(),
+          tabsetPanel(
+            tabPanel("Heatmap",
+                     tags$br(),
+                     withSpinner(
+                       plotlyOutput("consHeat", height = 700),
+                       type = 6),
+                     tags$hr(),
+                     ),
+            tabPanel("Table",
+                     withSpinner(
+                     formattableOutput("consTab", height = 700),
+                     type = 6)
+            )
+          )
+        )
+      })
+    }
+  })
+  
+  
+  
+  
   #### Tumour Purity Benchmark ####
   
   load("./data/Tumour_Purity_Corrs.RData")
   load("./data/TCGA_Annotation.RData")
   leukSideCols <- side_cols[!row.names(side_cols) %in% c("THYM", "DLBC"), ]
-  ## Plot Heatmap 
   
+  ## Plot Heatmap 
   output$purCorrPlotly <- renderPlotly({
     purWideTau <- wideTau
     purWideTau <- as.data.frame(sapply(purWideTau, as.numeric))

@@ -9,18 +9,26 @@ library(RColorBrewer)
 library(ggbeeswarm)
 library(data.table)
 library(markdown)
+library(shinyWidgets)
+library(ConsensusTME)
+library(shinyjs)
+library(shinybusy)
+library(wesanderson)
+library(formattable)
+library(fontawesome)
 
-# UI for Application for Benchmarking Gene Sets
-navbarPage(HTML("Consensus<sup>TME</sup>"),
+source('./useful_functions.R')
+ui <- navbarPage(HTML("Consensus<sup>TME</sup>"),
            collapsible = TRUE,
-           theme = bs_theme(fg = "rgb(14, 54, 107)",
+           theme = bs_theme(version = 5,
+                            fg = "rgb(14, 54, 107)",
                             font_scale = NULL,
                             `enable-rounded` = TRUE,
                             bootswatch = "lux",
                             bg = "rgb(255, 255, 255)"),
            windowTitle = "ConsensusTME",
            header = tags$head(
-             includeCSS("./www/DT.css")
+             includeCSS("./www/new.css")
            ),
            #### Home Page ####           
            tabPanel("Home", icon = icon("fas fa-home"),
@@ -69,19 +77,66 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                       width = 12)
            ),
            #### Cell type estimation ####
-           tabPanel("Cell Type Estimation", icon = icon("fas fa-chart-simple"),
-                    HTML("<h2> Running Consensus<sup>TME</sup> </h2>" ),
-                    sidebarPanel(
-                      HTML("<h3> Within the R environemnt </h3>" ),
-                      tags$hr(),
-                      HTML(paste0("Currently Consensus<sup>TME</sup> can only be run by installing the R ",
-                                  "package. Instructions for installation are on the github <a href='https://github.com/cansysbio/ConsensusTME' target='_blank'>",
-                                  "https://github.com/cansysbio/ConsensusTME</a> or below:")),
-                      tags$br(),
-                      tags$br(),
-                      includeMarkdown("www/cons_git_README.md"),
-                      width = 12
-                    )
+           navbarMenu("Cell Type Estimation", icon = icon("fas fa-chart-simple"),
+                      HTML("Consensus<sup>TME</sup>"),
+                      "----",
+                      tabPanel("Web Application",
+                               HTML("<h2> Run Consensus<sup>TME</sup> web application </h2>" ),
+                               bslib::page(
+                                 wellPanel(
+                                   tags$style(type="text", "#string {text-align:center}"),
+                                   HTML("<h4> 1. Upload gene expression matrix </h4>"),
+                                   tags$hr(),
+                                   HTML(paste0("<font color=\"#101011\"> Consensus<sup>TME</sup> performs best ",
+                                               "following TPM normalisation for RNA-seq or quantile ",
+                                               "normalisation for microarray data.</font>")),
+                                   tags$br(),
+                                   HTML(paste0("<font color=\"#101011\"> File format should be: Samples as columns, HUGO gene names as rows, <a href='", 
+                                               "TCGA_OV_Example.csv", "' download>see example TCGA Ovarian file</a></font>")),
+                                   tags$br(),
+                                   tags$br(),
+                                   HTML("<font color=\"#101011\"><b>N.B</b> Uploads limited to 200MB to prevent memory issues, for larger files please use R package </font>"),
+                                   tags$br(),
+                                   tags$br(),
+                                   uiOutput('rnaFile'),
+                                   pickerInput(
+                                     selected = NULL,
+                                     inputId = "CancSelect",
+                                     label = "Choose cancer type:",
+                                     multiple = TRUE,
+                                     choices = list(
+                                        TCGA = c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC", "KICH", "KIRC", "KIRP", "LGG", "LIHC", "LUAD", "LUSC", "MESO",
+                                                 "OV", "PAAD", "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD", "TGCT", "THCA", "THYM", "UCEC", "UCS", "UVM"),
+                                        Unfiltered = "Unfiltered"),
+                                     options = list(
+                                       "max-options" = 1,
+                                       `live-search` = TRUE)
+                                   )
+
+                                 ),
+                                 tags$br(),
+                                 uiOutput("consButtonPan"),
+                                 tags$br(),
+                                 uiOutput("exploreRes")
+                               )
+                               
+                               
+                      ),
+                      tabPanel("R Package",
+                               HTML("<h2> Running Consensus<sup>TME</sup> within the R environment </h2>" ),
+                               sidebarPanel(
+                                 HTML("<h3> Github package </h3>" ),
+                                 tags$hr(),
+                                 HTML(paste0("Currently Consensus<sup>TME</sup> can only be run by installing the R ",
+                                             "package. Instructions for installation are on the github <a href='https://github.com/cansysbio/ConsensusTME' target='_blank'>",
+                                             "https://github.com/cansysbio/ConsensusTME</a> or below:")),
+                                 tags$br(),
+                                 tags$br(),
+                                 includeMarkdown("www/cons_git_README.md"),
+                                 width = 12
+                               )
+                      )
+                    
            ),
            #### Benchmarking Experiments ####  
            navbarMenu("Benchmarking Experiments", icon = icon("fas fa-chart-line"),
