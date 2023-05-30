@@ -1,26 +1,34 @@
 library(shiny)
 library(bslib)
 library(shinycssloaders)
-library(plotly)
 library(DT)
 library(crosstalk)
 library(heatmaply)
-library(RColorBrewer)
 library(ggbeeswarm)
 library(data.table)
 library(markdown)
+library(shinyWidgets)
+library(ConsensusTME)
+library(shinyjs)
+library(wesanderson)
+library(formattable)
+library(fontawesome)
+library(dplyr)
 
-# UI for Application for Benchmarking Gene Sets
+source('./useful_functions.R')
+Rcpp::sourceCpp("./www/cppRndWalk.cpp")
+
 navbarPage(HTML("Consensus<sup>TME</sup>"),
            collapsible = TRUE,
-           theme = bs_theme(fg = "rgb(14, 54, 107)",
+           theme = bs_theme(version = 5,
+                            fg = "rgb(14, 54, 107)",
                             font_scale = NULL,
                             `enable-rounded` = TRUE,
                             bootswatch = "lux",
                             bg = "rgb(255, 255, 255)"),
            windowTitle = "ConsensusTME",
            header = tags$head(
-             includeCSS("./www/DT.css")
+             includeCSS("./www/new.css")
            ),
            #### Home Page ####           
            tabPanel("Home", icon = icon("fas fa-home"),
@@ -69,21 +77,68 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                       width = 12)
            ),
            #### Cell type estimation ####
-           tabPanel("Cell Type Estimation", icon = icon("fas fa-chart-simple"),
-                    HTML("<h2> Running Consensus<sup>TME</sup> </h2>" ),
-                    sidebarPanel(
-                      HTML("<h3> Within the R environemnt </h3>" ),
-                      tags$hr(),
-                      HTML(paste0("Currently Consensus<sup>TME</sup> can only be run by installing the R ",
-                                  "package. Instructions for installation are on the github <a href='https://github.com/cansysbio/ConsensusTME' target='_blank'>",
-                                  "https://github.com/cansysbio/ConsensusTME</a> or below:")),
-                      tags$br(),
-                      tags$br(),
-                      includeMarkdown("www/cons_git_README.md"),
-                      width = 12
-                    )
+           navbarMenu("Cell Type Estimation", icon = icon("fas fa-chart-simple"),
+                      HTML("Consensus<sup>TME</sup>"),
+                      "----",
+                      tabPanel("Web Application",
+                               HTML("<h2> Run Consensus<sup>TME</sup> web application </h2>" ),
+                               bslib::page(
+                                 wellPanel(
+                                   tags$style(type="text", "#string {text-align:center}"),
+                                   HTML("<h4> 1. Upload gene expression matrix </h4>"),
+                                   tags$hr(),
+                                   HTML(paste0("<font color=\"#101011\"> Consensus<sup>TME</sup> performs best ",
+                                               "following TPM normalisation for RNA-seq or quantile ",
+                                               "normalisation for microarray data.</font>")),
+                                   tags$br(),
+                                   HTML(paste0("<font color=\"#101011\"> File format should be: Samples as columns, HUGO gene names as rows, <a href='", 
+                                               "TCGA_OV_Example.csv", "' download>see example TCGA Ovarian file</a></font>")),
+                                   tags$br(),
+                                   tags$br(),
+                                   HTML("<font color=\"#101011\"><b>N.B</b> App may crash due to memory restrictions, for larger files please use R package </font>"),
+                                   tags$br(),
+                                   tags$br(),
+                                   uiOutput('rnaFile'),
+                                   pickerInput(
+                                     selected = NULL,
+                                     inputId = "CancSelect",
+                                     label = "Choose cancer type:",
+                                     multiple = TRUE,
+                                     choices = list(
+                                        TCGA = c("ACC", "BLCA", "BRCA", "CESC", "CHOL", "COAD", "DLBC", "ESCA", "GBM", "HNSC", "KICH", "KIRC", "KIRP", "LGG", "LIHC", "LUAD", "LUSC", "MESO",
+                                                 "OV", "PAAD", "PCPG", "PRAD", "READ", "SARC", "SKCM", "STAD", "TGCT", "THCA", "THYM", "UCEC", "UCS", "UVM"),
+                                        Unfiltered = "Unfiltered"),
+                                     options = list(
+                                       "max-options" = 1,
+                                       `live-search` = TRUE)
+                                   )
+
+                                 ),
+                                 tags$br(),
+                                 uiOutput("consButtonPan"),
+                                 tags$br(),
+                                 uiOutput("exploreRes")
+                               )
+                               
+                               
+                      ),
+                      tabPanel("R Package",
+                               HTML("<h2> Running Consensus<sup>TME</sup> within the R environment </h2>" ),
+                               sidebarPanel(
+                                 HTML("<h3> Github package </h3>" ),
+                                 tags$hr(),
+                                 HTML(paste0("Currently Consensus<sup>TME</sup> can only be run by installing the R ",
+                                             "package. Instructions for installation are on the github <a href='https://github.com/cansysbio/ConsensusTME' target='_blank'>",
+                                             "https://github.com/cansysbio/ConsensusTME</a> or below:")),
+                                 tags$br(),
+                                 tags$br(),
+                                 includeMarkdown("www/cons_git_README.md"),
+                                 width = 12
+                               )
+                      )
+                    
            ),
-           #### Benchmarking Experiments ####  
+           #### Benchmarking Experiments ####
            navbarMenu("Benchmarking Experiments", icon = icon("fas fa-chart-line"),
                       "TCGA Benchmarks:",
                       #### Tumour Purity Benchmark ####
@@ -99,13 +154,13 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                tags$br(),
                                tags$br(),
                                withSpinner(
-                                 plotlyOutput("purCorrPlotly"),
+                                 plotly::plotlyOutput("purCorrPlotly"),
                                  type = 6
                                ),
                                tags$br(),
                                tags$br(),
                                withSpinner(
-                                 plotlyOutput("purCorrBoxPlotly"),
+                                 plotly::plotlyOutput("purCorrBoxPlotly"),
                                  type = 6
                                )
                       ),
@@ -145,13 +200,13 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                           HTML("<h4> Adjusted R-Squared: Higher Value = Better Model </h4>"),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("leukR2FitHeatmap"),
+                                            plotly::plotlyOutput("leukR2FitHeatmap"),
                                             type = 6
                                           ),
                                           tags$br(),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("leukR2FitBoxplot"),
+                                            plotly::plotlyOutput("leukR2FitBoxplot"),
                                             type = 6
                                           )
                                  ),
@@ -160,13 +215,13 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                           HTML("<h4> Akaike Information Criterion: Lower Value = Better Model </h4>"),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("leukAicFitHeatmap"),
+                                            plotly::plotlyOutput("leukAicFitHeatmap"),
                                             type = 6
                                           ),
                                           tags$br(),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("leukAicFitBoxplot"),
+                                            plotly::plotlyOutput("leukAicFitBoxplot"),
                                             type = 6
                                           )
                                  ),
@@ -175,13 +230,13 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                           HTML("<h4> Bayesian Information Criterion: Lower Value = Better Model </h4>"),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("leukBicFitHeatmap"),
+                                            plotly::plotlyOutput("leukBicFitHeatmap"),
                                             type = 6
                                           ),
                                           tags$br(),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("leukBicFitBoxplot"),
+                                            plotly::plotlyOutput("leukBicFitBoxplot"),
                                             type = 6
                                           )
                                  )
@@ -213,13 +268,13 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                           HTML("<h4> Adjusted R-Squared: Higher Value = Better Model </h4>"),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("imageR2FitHeatmap"),
+                                            plotly::plotlyOutput("imageR2FitHeatmap"),
                                             type = 6
                                           ),
                                           tags$br(),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("imageR2FitBoxplot"),
+                                            plotly::plotlyOutput("imageR2FitBoxplot"),
                                             type = 6
                                           )
                                  ),
@@ -228,13 +283,13 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                           HTML("<h4> Akaike Information Criterion: Lower Value = Better Model </h4>"),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("imageAicFitHeatmap"),
+                                            plotly::plotlyOutput("imageAicFitHeatmap"),
                                             type = 6
                                           ),
                                           tags$br(),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("imageAicFitBoxplot"),
+                                            plotly::plotlyOutput("imageAicFitBoxplot"),
                                             type = 6
                                           )
                                  ),
@@ -243,13 +298,13 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                           HTML("<h4> Bayesian Information Criterion: Lower Value = Better Model </h4>"),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("imageBicFitHeatmap"),
+                                            plotly::plotlyOutput("imageBicFitHeatmap"),
                                             type = 6
                                           ),
                                           tags$br(),
                                           tags$br(),
                                           withSpinner(
-                                            plotlyOutput("imageBicFitBoxplot"),
+                                            plotly::plotlyOutput("imageBicFitBoxplot"),
                                             type = 6
                                           )
                                  )
@@ -257,7 +312,7 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                       ),
                       "----",
                       #### Cell-Type Specific Benchmarking ####
-                      
+
                       "Cell-Type Specific Benchmarks:",
                       tabPanel("MCP-Counter Dataset",
                                HTML("<h2> MCP-Counter Colon Cancer IHC Benchmark </h2>" ),
@@ -275,14 +330,14 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                tags$br(),
                                tags$br(),
                                withSpinner(
-                                 plotlyOutput("mcpScatter",
+                                 plotly::plotlyOutput("mcpScatter",
                                               height = 600,
                                               width = "100%"),
                                  type = 6
                                ),
                                tags$hr(),
                                withSpinner(
-                                 plotlyOutput("mcpBar"),
+                                 plotly::plotlyOutput("mcpBar"),
                                  type = 6
                                )
                       ),
@@ -301,7 +356,7 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                tags$br(),
                                tags$br(),
                                withSpinner(
-                                 plotlyOutput("timerBoxplots",
+                                 plotly::plotlyOutput("timerBoxplots",
                                               height = 600,
                                               width = "100%"),
                                  type = 6
@@ -323,14 +378,14 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                tags$br(),
                                tags$br(),
                                withSpinner(
-                                 plotlyOutput("xCellBoxplots420",
+                                 plotly::plotlyOutput("xCellBoxplots420",
                                               height = 450,
                                               width = "100%"),
                                  type = 6
                                ),
                                tags$hr(),
                                withSpinner(
-                                 plotlyOutput("xCellBoxplots311",
+                                 plotly::plotlyOutput("xCellBoxplots311",
                                               height = 450,
                                               width = "100%"),
                                  type = 6
@@ -352,7 +407,7 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                tags$br(),
                                tags$br(),
                                withSpinner(
-                                 plotlyOutput("cibersortBoxplots",
+                                 plotly::plotlyOutput("cibersortBoxplots",
                                               height = 500,
                                               width = "100%"),
                                  type = 6
@@ -377,7 +432,7 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                tags$br(),
                                tags$br(),
                                withSpinner(
-                                 plotlyOutput("hgsocBar"),
+                                 plotly::plotlyOutput("hgsocBar"),
                                  type = 6
                                )
                       ),
@@ -395,15 +450,15 @@ navbarPage(HTML("Consensus<sup>TME</sup>"),
                                tags$br(),
                                tags$br(),
                                withSpinner(
-                                 plotlyOutput("overviewLinePlot",
+                                 plotly::plotlyOutput("overviewLinePlot",
                                               height = 500,
                                               width = "100%"),
                                  type = 6
                                )
                       ),
-                      
+
            ),
-           
+
            #### Literature Resources ####
            navbarMenu("Literature Resources", icon = icon("fas fa-book"),
                       tabPanel("Current Approaches",

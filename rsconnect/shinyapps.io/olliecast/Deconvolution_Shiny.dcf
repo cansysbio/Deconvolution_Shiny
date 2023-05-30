@@ -1,0 +1,13 @@
+name: Deconvolution_Shiny
+title: Deconvolution_Shiny
+username:
+account: olliecast
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9169641
+bundleId: 7253242
+url: https://olliecast.shinyapps.io/Deconvolution_Shiny/
+when: 1684853094.85559
+lastSyncTime: 1684853094.85561
+asMultiple: FALSE
+asStatic: FALSE

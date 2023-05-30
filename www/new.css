@@ -1,0 +1,42 @@
+#currAppTab .dataTable thead th {
+  white-space: normal;
+  
+}
+
+#currAppTab .dataTable {
+  font-size: 0.9em;
+}
+
+#benchDsTab .dataTable thead th {
+  white-space: normal;
+  
+}
+
+#benchDsTab .dataTable {
+  font-size: 0.8em;
+}
+
+#reviewTab .dataTable thead th {
+  white-space: normal;
+  
+}
+
+#reviewTab .dataTable {
+  font-size: 0.9em;
+}
+
+.cbbg {
+  fill: transparent !important;
+}
+
+#consTab td {
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+#consTab {
+  overflow-x: auto;
+  overflow-y: auto;
+  display: block;
+  max-height: 700px;
+}
