@@ -44,23 +44,78 @@ mergeDups <- function(list.in, removenames = TRUE) {
     sprintf('%s is not a class this function can currently use',class(list.in))
   }
 }
+# 
+# radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hover", options = NULL){
+# 
+#   options = shinyBS:::buildTooltipOrPopoverOptionsList(title, placement, trigger, options)
+#   options = paste0("{'", paste(names(options), options, sep = "': '", collapse = "', '"), "'}")
+#   bsTag <- shiny::tags$script(shiny::HTML(paste0("
+#                                                  $(document).ready(function() {
+#                                                  setTimeout(function() {
+#                                                  $('input', $('#", id, "')).each(function(){
+#                                                  if(this.getAttribute('value') == '", choice, "') {
+#                                                  opts = $.extend(", options, ", {html: true});
+#                                                  $(this.parentElement).tooltip('destroy');
+#                                                  $(this.parentElement).tooltip(opts);
+#                                                  }
+#                                                  })
+#                                                  }, 500)
+#                                                  });
+#                                                  ")))
+#   htmltools::attachDependencies(bsTag, shinyBS:::shinyBSDep)
+# }
 
-radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hover", options = NULL){
-  
-  options = shinyBS:::buildTooltipOrPopoverOptionsList(title, placement, trigger, options)
-  options = paste0("{'", paste(names(options), options, sep = "': '", collapse = "', '"), "'}")
-  bsTag <- shiny::tags$script(shiny::HTML(paste0("
-                                                 $(document).ready(function() {
-                                                 setTimeout(function() {
-                                                 $('input', $('#", id, "')).each(function(){
-                                                 if(this.getAttribute('value') == '", choice, "') {
-                                                 opts = $.extend(", options, ", {html: true});
-                                                 $(this.parentElement).tooltip('destroy');
-                                                 $(this.parentElement).tooltip(opts);
-                                                 }
-                                                 })
-                                                 }, 500)
-                                                 });
-                                                 ")))
-  htmltools::attachDependencies(bsTag, shinyBS:::shinyBSDep)
+
+
+Rcpp_fasterRndWalk <- function(n, R, Ra, X, geneSets) {
+  es <- lapply(as.list(1:n), function(j) {
+    geneRanking <- order(R[, j], decreasing=TRUE)
+    es_sample <- lapply(geneSets, fasterRndWalk, geneRanking, j, Ra)
+    unlist(es_sample)
+  })
+  es <- do.call("cbind", es)
+  return(es)
 }
+
+# cppssGSEA <- function(geneMat, geneSetList) {
+#   X <- GSVA:::.filterFeatures(as.matrix(geneMat), "ssgsea")
+#   n <- ncol(X)
+#   R <- t(sparseMatrixStats::colRanks(X, ties.method = "average"))
+#   mode(R) <- "integer"
+#   Ra <- abs(R)^0.25
+# 
+#   geneSets2 <- GSVA:::.mapGeneSetsToFeatures(geneSetList, rownames(X))
+#   nesMat <- Rcpp_fasterRndWalk(n, R, Ra, X, geneSets)
+#   colnames(nesMat) <- colnames(geneMat)
+#   return(nesMat)
+# }
+
+cppssGSEAskinny <- function(X, geneSetList) {
+  n <- ncol(X)
+  R <- t(sparseMatrixStats::colRanks(X, ties.method = "average"))
+  mode(R) <- "integer"
+  Ra <- abs(R)^0.25
+  geneRowNames <- seq_along(row.names(X))
+  names(geneRowNames) <- row.names(X)
+  geneSets <- lapply(geneSetList, function(geneGroup) {
+    rowNums <- geneRowNames[geneGroup]
+    rowNums <- rowNums[!is.na(rowNums)]
+    as.integer(rowNums)
+  })
+  nesMat <- Rcpp_fasterRndWalk(n, R, Ra, X, geneSets)
+  colnames(nesMat) <- colnames(X)
+  return(nesMat)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

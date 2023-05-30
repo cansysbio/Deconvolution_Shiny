@@ -38,16 +38,13 @@ function(input, output, session) {
       rnaMat <- as.matrix(fread(inFile$datapath, header = T, drop = 1))
       row.names(rnaMat) <- as.character(unlist(geneNames[,1]))
       rm(geneNames)
-      gc()
+      gc(full =T)
       
       # Additional check to ensure the data is numerical
       if (!is.numeric(rnaMat)) {
         stop("Data should be a numeric matrix")
       }
-      # Check that the columns and rows are properly formatted
-      if (!all(sapply(rnaMat, is.numeric))) {
-        stop("All columns (samples) should only contain numeric values")
-      }
+
       
       # Check for HUGO symbols by initially comparing against ConsensusTME gene sets
       allConsGenes <- unique(unlist(consensusGeneSets$Unfiltered))
@@ -58,7 +55,7 @@ function(input, output, session) {
       rnaData(rnaMat)
       rnaCheckPass(TRUE)
       rm(rnaMat)
-      gc(full = T, verbose = T)
+      gc(full = T)
     }, error = function(e) {
       # Send sweet alert with error message
       sendSweetAlert(
@@ -160,22 +157,64 @@ function(input, output, session) {
       )
       return(NULL)
     }
-    show_modal_spinner(
+    shinybusy::show_modal_spinner(
       spin = "fingerprint",
       color = "#29a0f0",
       text = HTML(sprintf("Running Consensus%s", tags$sup("TME")))
     )
     
-    ## TODO: Update GSVA to run in chunks to reduce memory load (we'll need to perform barbie et al. optimisation manually after)
-    consOut <- consensusTMEAnalysis(rnaData(), cancerType = input$CancSelect)
-    rnaData(NULL)
-    consMat(consOut)
-    remove_modal_spinner()
+    if (FALSE) {
+      consMat(consensusTMEAnalysis(rnaData(), cancerType = input$CancSelect))
+      rnaData(NULL)
+      gc(full = T)
+    } else {
+      # Number of chunks
+      numChunks <- ceiling(ncol(rnaData()) / 5)
+      
+      runConsSplit <- function(mat, numChunks) {
+        splitCols <- split(1:ncol(mat), cut(1:ncol(mat), numChunks))
+        
+        # Apply function to each chunk
+        results <- lapply(splitCols, function(cols) {
+          # Extract matrix chunk
+          matChunk <- mat[, cols]
+
+          #gsvaResult <- GSVA::gsva(expr = matChunk, gset.idx.list = consensusGeneSets[[input$CancSelect]], method = "ssgsea", ssgsea.norm = FALSE, parallel.sz=FALSE)
+          gsvaResult <- cppssGSEAskinny(X = matChunk, geneSetList = ConsensusTME::consensusGeneSets[[input$CancSelect]])
+          
+          # Remove chunk from memory
+          rm(matChunk)
+          
+          # Explicitly call garbage collection
+          gc(full = T)
+          
+          return(gsvaResult)
+        })
+        
+        # Combine results
+        finalResult <- do.call(cbind, results)
+        
+        # Apply Barbie et al. 2009 normalisation 
+        numCol <- ncol(finalResult)
+        finalResult <- finalResult[, 1:numCol, drop=FALSE] / (range(finalResult)[2] - range(finalResult)[1])
+        return(finalResult)
+        
+      }
+      
+      # Use the function
+      consMat(runConsSplit(rnaData(), numChunks))
+      unloadNamespace("GSVA")
+      rnaData(NULL)
+      gc(full = T)
+    }
+    
+    shinybusy::remove_modal_spinner()
     sendSweetAlert(
       session = session,
       title ="Cell Type Estimates Generated!",
       type = "success"
     )
+    
     if(isTruthy(rnaCheckPass())){
       output$consButtonPan <- renderUI({
         fluidRow(
@@ -205,7 +244,7 @@ function(input, output, session) {
   observeEvent(consMat(), {
     if(!is.null(consMat())) {
       
-      output$consHeat <- renderPlotly({
+      output$consHeat <- plotly::renderPlotly({
         consPlotMat <- consMat()
         
         ## Subset to 3dp for plotting only
@@ -268,7 +307,7 @@ function(input, output, session) {
             tabPanel("Heatmap",
                      tags$br(),
                      withSpinner(
-                       plotlyOutput("consHeat", height = 700),
+                       plotly::plotlyOutput("consHeat", height = 700),
                        type = 6),
                      tags$hr(),
                      ),
@@ -293,7 +332,7 @@ function(input, output, session) {
   leukSideCols <- side_cols[!row.names(side_cols) %in% c("THYM", "DLBC"), ]
   
   ## Plot Heatmap 
-  output$purCorrPlotly <- renderPlotly({
+  output$purCorrPlotly <- plotly::renderPlotly({
     purWideTau <- wideTau
     purWideTau <- as.data.frame(sapply(purWideTau, as.numeric))
     row.names(purWideTau) <- row.names(wideQval)
@@ -317,7 +356,7 @@ function(input, output, session) {
   })
   
   ## Plot Purity Correlations Boxplot
-  output$purCorrBoxPlotly <- renderPlotly({
+  output$purCorrBoxPlotly <- plotly::renderPlotly({
     purLongCorrs <- longCorrs
     purLongCorrs <- purLongCorrs %>% dplyr::distinct()
     purLongCorrs$Method <- gsub("_Immune_Score", "", purLongCorrs$Method)
@@ -329,8 +368,15 @@ function(input, output, session) {
     
     names(methodCols) <- unique(purLongCorrs$Method)
     
-    qualColPals = brewer.pal.info[brewer.pal.info$category == 'qual',]
-    colVector = unlist(mapply(brewer.pal, qualColPals$maxcolors, rownames(qualColPals)))
+    colVector = c("#7FC97F", "#BEAED4", "#FDC086", "#FFFF99", "#386CB0", "#F0027F", "#BF5B17", "#666666", "#1B9E77",
+                  "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D", "#666666", "#A6CEE3", "#1F78B4",
+                  "#B2DF8A", "#33A02C", "#FB9A99", "#E31A1C", "#FDBF6F", "#FF7F00", "#CAB2D6", "#6A3D9A", "#FFFF99",
+                  "#B15928", "#FBB4AE", "#B3CDE3", "#CCEBC5", "#DECBE4", "#FED9A6", "#FFFFCC", "#E5D8BD", "#FDDAEC",
+                  "#F2F2F2", "#B3E2CD", "#FDCDAC", "#CBD5E8", "#F4CAE4", "#E6F5C9", "#FFF2AE", "#F1E2CC", "#CCCCCC",
+                  "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999",
+                  "#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3", "#8DD3C7",
+                  "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5", "#D9D9D9", "#BC80BD","#CCEBC5",
+                  "#FFED6F")
     cancCols <- rep(colVector, 9)
     
     names(cancCols) <- unique(purLongCorrs$Cancer)
@@ -355,7 +401,7 @@ function(input, output, session) {
             panel.grid.minor = element_blank()
       ) 
     
-    p <- ggplotly(plot, tooltip = c("Tau", "Method", "Cancer"))
+    p <- plotly::ggplotly(plot, tooltip = c("Tau", "Method", "Cancer"))
     
     p$x$data[1:9] <- lapply(p$x$data[1:9], FUN = function(x){
       x$marker = list(opacity = 0)
@@ -381,7 +427,7 @@ function(input, output, session) {
   
   ## Adjusted R-Squared
   
-  output$leukR2FitHeatmap <- renderPlotly({
+  output$leukR2FitHeatmap <- plotly::renderPlotly({
     
     leukWideR2 <- wideRSquared
     
@@ -420,7 +466,7 @@ function(input, output, session) {
   
   ## AIC
   
-  output$leukAicFitHeatmap <- renderPlotly({
+  output$leukAicFitHeatmap <- plotly::renderPlotly({
     leukWideAic <- wideAIC
     
     leukWideAic <- as.data.frame(sapply(leukWideAic, as.numeric))
@@ -453,7 +499,7 @@ function(input, output, session) {
   
   ## BIC
   
-  output$leukBicFitHeatmap <- renderPlotly({
+  output$leukBicFitHeatmap <- plotly::renderPlotly({
     leukWideBic <- wideBIC
     
     leukWideBic <- as.data.frame(sapply(leukWideBic, as.numeric))
@@ -488,7 +534,7 @@ function(input, output, session) {
   ## Fit Metrics Boxplots
   
   ## Adjusted R-Squared
-  output$leukR2FitBoxplot <- renderPlotly({
+  output$leukR2FitBoxplot <- plotly::renderPlotly({
     
     leukLong <- longFitMetric %>% dplyr::distinct()
     
@@ -501,8 +547,15 @@ function(input, output, session) {
     
     names(leukMethodCols) <- unique(leukLong$Method)
     
-    qualColPals = brewer.pal.info[brewer.pal.info$category == 'qual',]
-    colVector = unlist(mapply(brewer.pal, qualColPals$maxcolors, rownames(qualColPals)))
+    colVector = c("#7FC97F", "#BEAED4", "#FDC086", "#FFFF99", "#386CB0", "#F0027F", "#BF5B17", "#666666", "#1B9E77",
+                           "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D", "#666666", "#A6CEE3", "#1F78B4",
+                           "#B2DF8A", "#33A02C", "#FB9A99", "#E31A1C", "#FDBF6F", "#FF7F00", "#CAB2D6", "#6A3D9A", "#FFFF99",
+                           "#B15928", "#FBB4AE", "#B3CDE3", "#CCEBC5", "#DECBE4", "#FED9A6", "#FFFFCC", "#E5D8BD", "#FDDAEC",
+                           "#F2F2F2", "#B3E2CD", "#FDCDAC", "#CBD5E8", "#F4CAE4", "#E6F5C9", "#FFF2AE", "#F1E2CC", "#CCCCCC",
+                           "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999",
+                           "#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3", "#8DD3C7",
+                           "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5", "#D9D9D9", "#BC80BD","#CCEBC5",
+                           "#FFED6F")
     cancCols <- rep(colVector, 8)
     
     leukR2plot <- ggplot(data = leukLong,
@@ -524,7 +577,7 @@ function(input, output, session) {
             panel.grid.minor = element_blank()
       ) 
     
-    pR2 <- ggplotly(leukR2plot, tooltip = c("Adjusted R<sup>2</sup>", "Method", "Cancer"))
+    pR2 <- plotly::ggplotly(leukR2plot, tooltip = c("Adjusted R<sup>2</sup>", "Method", "Cancer"))
     
     pR2$x$data[1:8] <- lapply(pR2$x$data[1:8], FUN = function(x){
       x$marker = list(opacity = 0)
@@ -536,7 +589,7 @@ function(input, output, session) {
   })
   
   ## AIC
-  output$leukAicFitBoxplot <- renderPlotly({
+  output$leukAicFitBoxplot <- plotly::renderPlotly({
     
     leukLong <- longFitMetric %>% dplyr::distinct()
     
@@ -549,8 +602,15 @@ function(input, output, session) {
     
     names(leukMethodCols) <- unique(leukLong$Method)
     
-    qualColPals = brewer.pal.info[brewer.pal.info$category == 'qual',]
-    colVector = unlist(mapply(brewer.pal, qualColPals$maxcolors, rownames(qualColPals)))
+    colVector = c("#7FC97F", "#BEAED4", "#FDC086", "#FFFF99", "#386CB0", "#F0027F", "#BF5B17", "#666666", "#1B9E77",
+                           "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D", "#666666", "#A6CEE3", "#1F78B4",
+                           "#B2DF8A", "#33A02C", "#FB9A99", "#E31A1C", "#FDBF6F", "#FF7F00", "#CAB2D6", "#6A3D9A", "#FFFF99",
+                           "#B15928", "#FBB4AE", "#B3CDE3", "#CCEBC5", "#DECBE4", "#FED9A6", "#FFFFCC", "#E5D8BD", "#FDDAEC",
+                           "#F2F2F2", "#B3E2CD", "#FDCDAC", "#CBD5E8", "#F4CAE4", "#E6F5C9", "#FFF2AE", "#F1E2CC", "#CCCCCC",
+                           "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999",
+                           "#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3", "#8DD3C7",
+                           "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5", "#D9D9D9", "#BC80BD","#CCEBC5",
+                           "#FFED6F")
     cancCols <- rep(colVector, 8)
     
     leukAicplot <- ggplot(data = leukLong,
@@ -572,7 +632,7 @@ function(input, output, session) {
             panel.grid.minor = element_blank()
       ) 
     
-    pAic <- ggplotly(leukAicplot, tooltip = c("AIC Z Score", "Method", "Cancer"))
+    pAic <- plotly::ggplotly(leukAicplot, tooltip = c("AIC Z Score", "Method", "Cancer"))
     
     pAic$x$data[1:8] <- lapply(pAic$x$data[1:8], FUN = function(x){
       x$marker = list(opacity = 0)
@@ -585,7 +645,7 @@ function(input, output, session) {
   
   ## BIC
   
-  output$leukBicFitBoxplot <- renderPlotly({
+  output$leukBicFitBoxplot <- plotly::renderPlotly({
     
     leukLong <- longFitMetric %>% dplyr::distinct()
     
@@ -599,8 +659,15 @@ function(input, output, session) {
     
     names(leukMethodCols) <- unique(leukLong$Method)
     
-    qualColPals = brewer.pal.info[brewer.pal.info$category == 'qual',]
-    colVector = unlist(mapply(brewer.pal, qualColPals$maxcolors, rownames(qualColPals)))
+    colVector = c("#7FC97F", "#BEAED4", "#FDC086", "#FFFF99", "#386CB0", "#F0027F", "#BF5B17", "#666666", "#1B9E77",
+                           "#D95F02", "#7570B3", "#E7298A", "#66A61E", "#E6AB02", "#A6761D", "#666666", "#A6CEE3", "#1F78B4",
+                           "#B2DF8A", "#33A02C", "#FB9A99", "#E31A1C", "#FDBF6F", "#FF7F00", "#CAB2D6", "#6A3D9A", "#FFFF99",
+                           "#B15928", "#FBB4AE", "#B3CDE3", "#CCEBC5", "#DECBE4", "#FED9A6", "#FFFFCC", "#E5D8BD", "#FDDAEC",
+                           "#F2F2F2", "#B3E2CD", "#FDCDAC", "#CBD5E8", "#F4CAE4", "#E6F5C9", "#FFF2AE", "#F1E2CC", "#CCCCCC",
+                           "#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999",
+                           "#66C2A5", "#FC8D62", "#8DA0CB", "#E78AC3", "#A6D854", "#FFD92F", "#E5C494", "#B3B3B3", "#8DD3C7",
+                           "#FFFFB3", "#BEBADA", "#FB8072", "#80B1D3", "#FDB462", "#B3DE69", "#FCCDE5", "#D9D9D9", "#BC80BD","#CCEBC5",
+                           "#FFED6F")
     cancCols <- rep(colVector, 8)
     
     leukBicplot <- ggplot(data = leukLong,
@@ -622,7 +689,7 @@ function(input, output, session) {
             panel.grid.minor = element_blank()
       ) 
     
-    pBic <- ggplotly(leukBicplot, tooltip = c("BIC Z Score", "Method", "Cancer"))
+    pBic <- plotly::ggplotly(leukBicplot, tooltip = c("BIC Z Score", "Method", "Cancer"))
     
     pBic$x$data[1:8] <- lapply(pBic$x$data[1:8], FUN = function(x){
       x$marker = list(opacity = 0)
@@ -646,7 +713,7 @@ function(input, output, session) {
   
   ## Adjusted R-Squared
   
-  output$imageR2FitHeatmap <- renderPlotly({
+  output$imageR2FitHeatmap <- plotly::renderPlotly({
     
     imageWideR2 <- as.data.frame(sapply(imageWideRSquared, as.numeric))
     
@@ -683,7 +750,7 @@ function(input, output, session) {
   
   ## AIC
   
-  output$imageAicFitHeatmap <- renderPlotly({
+  output$imageAicFitHeatmap <- plotly::renderPlotly({
     
     imageAic <- as.data.frame(sapply(imageWideAIC, as.numeric))
     
@@ -718,7 +785,7 @@ function(input, output, session) {
     
   })
   
-  output$imageBicFitHeatmap <- renderPlotly({
+  output$imageBicFitHeatmap <- plotly::renderPlotly({
     
     imageBic <- as.data.frame(sapply(imageWideBIC, as.numeric))
     
@@ -757,7 +824,7 @@ function(input, output, session) {
   
   ## Adjusted R-Squared
   
-  output$imageR2FitBoxplot <- renderPlotly({
+  output$imageR2FitBoxplot <- plotly::renderPlotly({
     
     imLong <- imageLongFitMetric %>% dplyr::distinct()
     
@@ -794,7 +861,7 @@ function(input, output, session) {
             panel.grid.minor = element_blank()
       ) 
     
-    pR2 <- ggplotly(imR2plot, tooltip = c("Adjusted R<sup>2</sup>", "Method", "Cancer"))
+    pR2 <- plotly::ggplotly(imR2plot, tooltip = c("Adjusted R<sup>2</sup>", "Method", "Cancer"))
     
     pR2$x$data[1:8] <- lapply(pR2$x$data[1:8], FUN = function(x){
       x$marker = list(opacity = 0)
@@ -808,7 +875,7 @@ function(input, output, session) {
   
   ## AIC
   
-  output$imageAicFitBoxplot <- renderPlotly({
+  output$imageAicFitBoxplot <- plotly::renderPlotly({
     
     imLong <- imageLongFitMetric %>% dplyr::distinct()
     
@@ -845,7 +912,7 @@ function(input, output, session) {
             panel.grid.minor = element_blank()
       ) 
     
-    pAic <- ggplotly(imAicplot, tooltip = c("AIC Z Score", "Method", "Cancer"))
+    pAic <- plotly::ggplotly(imAicplot, tooltip = c("AIC Z Score", "Method", "Cancer"))
     
     pAic$x$data[1:8] <- lapply(pAic$x$data[1:8], FUN = function(x){
       x$marker = list(opacity = 0)
@@ -859,7 +926,7 @@ function(input, output, session) {
   
   ## BIC
   
-  output$imageBicFitBoxplot <- renderPlotly({
+  output$imageBicFitBoxplot <- plotly::renderPlotly({
     
     imLong <- imageLongFitMetric %>% dplyr::distinct()
     
@@ -896,7 +963,7 @@ function(input, output, session) {
             panel.grid.minor = element_blank()
       ) 
     
-    pBic <- ggplotly(imBicplot, tooltip = c("BIC Z Score", "Method", "Cancer"))
+    pBic <- plotly::ggplotly(imBicplot, tooltip = c("BIC Z Score", "Method", "Cancer"))
     
     pBic$x$data[1:8] <- lapply(pBic$x$data[1:8], FUN = function(x){
       x$marker = list(opacity = 0)
@@ -914,7 +981,7 @@ function(input, output, session) {
   load("./data/MCP_Benchmark_Data.RData")
   
   ## Scatter Plot
-  output$mcpScatter <- renderPlotly({
+  output$mcpScatter <- plotly::renderPlotly({
     
     imMethodCols <- c("#3953A4", "#087022", "#B9529F", "#231F20",
                       "#F7931D", "#ED2224", "#F6EB16", "#6FCCDD")
@@ -953,7 +1020,7 @@ function(input, output, session) {
       ylab("IHC Estimates (Cells/mm<sup>2</sup>)") +
       facet_grid(Cell_Type ~ Method_F , scale = 'free')
     
-    ggplotly(mcpScatter,
+    plotly::ggplotly(mcpScatter,
              tooltip = "text") %>%
       layout(
         legend = list(
@@ -968,7 +1035,7 @@ function(input, output, session) {
   
   ## Boxplots
   
-  output$mcpBar <- renderPlotly({
+  output$mcpBar <- plotly::renderPlotly({
     
     imMethodCols <- c("#3953A4", "#087022", "#B9529F" , "#231F20",
                       "#F7931D", "#ED2224", "#F6EB16", "#6FCCDD")
@@ -1009,7 +1076,7 @@ function(input, output, session) {
       ylab("Correlation Between RNA & IHC Estimates <br> <sup>(Kendall's &#964; )</sup>") +
       imMethodColScale
     
-    ggplotly(mcpBar,
+    plotly::ggplotly(mcpBar,
              tooltip = "text") %>%
       config(displayModeBar = F)
     
@@ -1019,7 +1086,7 @@ function(input, output, session) {
   
   timerLong <- readRDS("./data/TIMER_Benchmark_Data.rds")
   
-  output$timerBoxplots <- renderPlotly({
+  output$timerBoxplots <- plotly::renderPlotly({
     imMethodCols <- c("#3953A4", "#F6EB16", "#ED2224" , "#087022",
                       "#F7931D", "#6FCCDD", "#B9529F")
     
@@ -1057,7 +1124,7 @@ function(input, output, session) {
                  drop = TRUE,
                  scales = "free_y")
     
-    timPlotly <- ggplotly(timerPlot,
+    timPlotly <- plotly::ggplotly(timerPlot,
                           tooltip = "text")
     
     timPlotly$x$data[1:7] <- lapply(timPlotly$x$data[1:7], FUN = function(x){
@@ -1078,7 +1145,7 @@ function(input, output, session) {
   
   cibersortCorrs <- readRDS("./data/CIBERSORT_Benchmark_Correlations.rds")
   
-  output$cibersortBoxplots <- renderPlotly({
+  output$cibersortBoxplots <- plotly::renderPlotly({
     imMethodCols <- c("#F6EB16", "#6FCCDD", "#3953A4" , "#087022",
                       "#231F20", "#B9529F", "#ED2224", "#F7931D")
     
@@ -1134,7 +1201,7 @@ function(input, output, session) {
       ylab("Correlation Between RNA & Flow Cytometry Estimates <br> <sup>(Kendall's &#964; )</sup>") +
       imCellColScale
     
-    ggplotly(cibBox,
+    plotly::ggplotly(cibBox,
              tooltip = "text") %>%
       config(displayModeBar = F)
   })
@@ -1143,7 +1210,7 @@ function(input, output, session) {
   
   load("./data/xCell_Benchmarking_Correlations.RData")
   
-  output$xCellBoxplots311 <- renderPlotly({
+  output$xCellBoxplots311 <- plotly::renderPlotly({
     imMethodCols <- c("#F6EB16", "#6FCCDD", "#3953A4" , "#087022",
                       "#231F20", "#B9529F", "#ED2224", "#F7931D")
     
@@ -1207,13 +1274,13 @@ function(input, output, session) {
       ylab("Correlation Between RNA & CyTOF Estimates <br> <sup>(Kendall's &#964; )</sup>") +
       imCellColScale
     
-    ggplotly(xCellBox311,
+    plotly::ggplotly(xCellBox311,
              tooltip = "text") %>%
       config(displayModeBar = F) %>%
       layout(margin = list(l = 100))
   })
   
-  output$xCellBoxplots420 <- renderPlotly({
+  output$xCellBoxplots420 <- plotly::renderPlotly({
     imMethodCols <- c("#F6EB16", "#6FCCDD", "#3953A4" , "#087022",
                       "#231F20", "#B9529F", "#ED2224", "#F7931D")
     
@@ -1276,7 +1343,7 @@ function(input, output, session) {
       ylab("Correlation Between RNA & CyTOF Estimates <br> <sup>(Kendall's &#964; )</sup>") +
       imCellColScale
     
-    ggplotly(xCellBox420,
+    plotly::ggplotly(xCellBox420,
              tooltip = "text") %>%
       config(displayModeBar = F) %>%
       layout(margin = list(l = 100))
@@ -1286,7 +1353,7 @@ function(input, output, session) {
   
   load("./data/HGSOC_Benchmarking.RData")
   
-  output$hgsocBar <- renderPlotly({
+  output$hgsocBar <- plotly::renderPlotly({
     imMethodCols <- c("#F6EB16", "#6FCCDD", "#3953A4" , "#087022",
                       "#231F20", "#B9529F", "#ED2224", "#F7931D")
     
@@ -1326,7 +1393,7 @@ function(input, output, session) {
       ylab("Correlation Between RNA & IHC Estimates <br> <sup>(Kendall's &#964; )</sup>") +
       imMethodColScale
     
-    ggplotly(hgsocBar,
+    plotly::ggplotly(hgsocBar,
              tooltip = "text") %>%
       config(displayModeBar = F)
   })
@@ -1342,7 +1409,7 @@ function(input, output, session) {
   
   benchRanksShared <- SharedData$new(benchRanks, ~Method)
   
-  output$overviewLinePlot <- renderPlotly({
+  output$overviewLinePlot <- plotly::renderPlotly({
     
     imMethodCols <- c("#6FCCDD", "#3953A4", "#087022" , "#231F20",
                       "#ED2224", "#F6EB16", "#F7931D", "#B9529F")
@@ -1385,7 +1452,7 @@ function(input, output, session) {
       xlab("Benchmarking Experiment") +
       imMethodColScale
     
-    rankLineLy <- ggplotly(rankLine, tooltip = "text") %>%
+    rankLineLy <- plotly::ggplotly(rankLine, tooltip = "text") %>%
       layout(showlegend = FALSE) %>%
       config(displayModeBar = F)
     highlight(rankLineLy, "plotly_hover",
