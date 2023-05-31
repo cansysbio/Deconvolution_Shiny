@@ -309,7 +309,7 @@ function(input, output, session) {
                      withSpinner(
                        plotly::plotlyOutput("consHeat", height = 700),
                        type = 6),
-                     tags$hr(),
+                     tags$hr()
                      ),
             tabPanel("Table",
                      withSpinner(
@@ -1464,10 +1464,22 @@ function(input, output, session) {
   currDf <- read.csv("./data/Deconvolution_Methods.csv", fileEncoding = "UTF-8", check.names = F, stringsAsFactors = T)
   
   currDf$`Publication Link` <- as.character(currDf$`Publication Link`)
-  currDf$`Link to Tool` <- as.character(currDf$`Link to Tool`)
+  
+  currDf$`Link to Tool` <- mapply(function(datLink, extraInf){
+    datLink <- as.character(datLink)
+    extraInf <- paste0("- ", as.character(extraInf))
+    extraInf <- gsub("Dead Link -", "Dead Link <br><sub>", extraInf)
+    
+    if (datLink == "N/A") {
+      return(sprintf('<i class="fa fa-exclamation-triangle" aria-hidden="true" title="No link available"></i> %s</sub>', extraInf))
+    } else {
+      linkSingle = sprintf('<a href="%s" target="_blank" title="%s"><i class="fa fa-external-link" aria-hidden="true"></i></a> %s', datLink, datLink, extraInf)
+      return(linkSingle)
+    }
+  }, currDf$`Link to Tool`, currDf$`Tool Info`, SIMPLIFY = FALSE, USE.NAMES = FALSE)
   
   currDf$`Publication Link` <- sprintf('<a href="%s" target="_blank"><i class="fa fa-external-link" aria-hidden="true"></i></a>', currDf$`Publication Link`)
-  currDf$`Link to Tool` <- sprintf('<a href="%s" target="_blank"><i class="fa fa-external-link" aria-hidden="true"></i></a>', currDf$`Link to Tool`)
+  currDf$`Tool Info` <- NULL
   
   output$currAppTab <- renderDT({
     datatable(
@@ -1479,7 +1491,8 @@ function(input, output, session) {
       options = list(
         autoWidth = TRUE,
         pageLength = 10,
-        fixedHeader = TRUE, 
+        fixedHeader = FALSE, 
+        scrollX = FALSE,
         scrollY = '1000px',
         scrollCollapse = TRUE,
         paging = FALSE,
