@@ -201,11 +201,22 @@ function(input, output, session) {
         
       }
       
-      # Use the function
-      consMat(runConsSplit(rnaData(), numChunks))
-      unloadNamespace("GSVA")
-      rnaData(NULL)
-      gc(full = T)
+      # Run splitwise if number of chunks is > 1
+      if (numChunks > 1) {
+        consMat(runConsSplit(rnaData(), numChunks))
+        #unloadNamespace("GSVA")
+        rnaData(NULL)
+        gc(full = T)
+      } else {
+        finalResult <- cppssGSEAskinny(X = rnaData(), geneSetList = ConsensusTME::consensusGeneSets[[input$CancSelect]])
+        numCol <- ncol(finalResult)
+        finalResult <- finalResult[, 1:numCol, drop=FALSE] / (range(finalResult)[2] - range(finalResult)[1])
+        consMat(finalResult)
+        rm(finalResult)
+        rnaData(NULL)
+        gc(full = T)
+      }
+      
     }
     
     shinybusy::remove_modal_spinner()
